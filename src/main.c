@@ -115,6 +115,44 @@ void atualizarBola(Bola *b) {
         b->vel.y *= -1;
 }
 
+void gerenciarBolas(Bola **bolas, int *quantidadeBolas)
+{
+    if (IsKeyPressed(KEY_SPACE)) // cria a bola nova
+    {
+        (*quantidadeBolas)++;
+
+        Bola *temp = realloc(*bolas, (*quantidadeBolas) * sizeof(Bola));
+        if (temp != NULL)
+        {
+            *bolas = temp;
+
+            Bola *newB = &((*bolas)[*quantidadeBolas - 1]);
+            newB->pos = (Vector2){ GetRandomValue(50, LARGURA_JANELA - 50),
+                                    GetRandomValue(50, ALTURA_JANELA - 50)};
+            newB->vel = (Vector2){ (float)GetRandomValue(-4, 4),
+                                    (float)GetRandomValue(-4, 4)};
+            newB->raio = (float)GetRandomValue(10, 25);
+            newB->cor  = (Color){ GetRandomValue(100,255), GetRandomValue(100,255),
+                            GetRandomValue(100,255), 255 };
+        }
+    } else if (IsKeyPressed(KEY_BACKSPACE)) // deleta a ultima bola
+    {
+        if ((*quantidadeBolas) > 0)
+        {
+            (*quantidadeBolas)--;
+
+            if (*quantidadeBolas > 0)
+            {
+                Bola *temp = realloc(*bolas, (*quantidadeBolas) * sizeof(Bola));
+                if (temp != NULL) *bolas = temp;
+            } else {
+                free(*bolas);
+                *bolas = NULL;
+            }
+        } 
+    }
+}
+
 int main(void) {
     srand((unsigned int)time(NULL));
 
@@ -136,6 +174,8 @@ int main(void) {
         for (int i = 0; i < quantidadeBolas; i++) {
             atualizarBola(bolas + i);
         }
+
+        gerenciarBolas(&bolas, &quantidadeBolas);
 
         BeginDrawing();
             ClearBackground(RAYWHITE);

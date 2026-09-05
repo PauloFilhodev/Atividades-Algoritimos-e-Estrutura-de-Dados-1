@@ -1,0 +1,17 @@
+# Executáveis e pasta de saída
+*.exe
+src/output/
+bin/
+build/
+
+# Arquivos de compilação intermediários
+*.o
+*.obj
+
+# Configurações locais do VS Code
+.vscode/
+!.vscode/tasks.json.example
+
+# Arquivos temporários do sistema
+Thumbs.db
+.DS_Store

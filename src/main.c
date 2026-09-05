@@ -54,7 +54,7 @@ int **criarMatriz(int linhas, int colunas) {
         matriz[i] = (int *)malloc(colunas * sizeof(int));
         for (int j = 0; j < colunas; j++) {
             // preenche com 0 ou 1 aleatoriamente (dois "tipos" de célula)
-            matriz[i][j] = GetRandomValue(0, 1);
+            matriz[i][j] = 0;
         }
     }
     return matriz;
@@ -73,7 +73,7 @@ void desenharMatriz(int **matriz, int linhas, int colunas) {
     for (int i = 0; i < linhas; i++) {
         for (int j = 0; j < colunas; j++) {
             Color cor = (matriz[i][j] == 1) ? (Color){20, 40, 70, 255}
-                                             : (Color){15, 30, 55, 255};
+                                             : (Color){15, 30, 55, 100};
             DrawRectangle(j * TAM_CELULA, i * TAM_CELULA,
                            TAM_CELULA - 2, TAM_CELULA - 2, cor);
         }
@@ -153,6 +153,41 @@ void gerenciarBolas(Bola **bolas, int *quantidadeBolas)
     }
 }
 
+void marcarVisitaGrade(int ** grade, int linha, int coluna, const Bola *bola, int *contador)
+{
+    int linha_atual = (int) (bola->pos.y / TAM_CELULA);
+    int coluna_atual = (int) (bola->pos.x / TAM_CELULA);
+    if (linha_atual >= 0 && linha_atual < linha && coluna_atual >= 0 && coluna_atual < coluna)
+    {
+        if (grade[linha_atual][coluna_atual] == 0)
+        {
+            grade[linha_atual][coluna_atual] = 1;
+            (*contador)++;
+        }
+    }
+}
+
+// void contarCelulasVisitadas(int ** grade, int linhas, int colunas, int *contador)
+// {
+//     // int contador;
+//     for (int i = 0; i < linhas; i++)
+//     {
+//         for (int j = 0; j < colunas; j++)
+//         {
+//             // if (grade[i][j] == 0)
+//             // {
+//             //     grade[i][j] = 1;
+//             //     (*contador)++;
+//             // }
+//             if (grade[i][j] == 1)
+//             {
+//                 (*contador)++;
+//             }
+//         }
+//     }
+//     // return contador;
+// }
+
 int main(void) {
     srand((unsigned int)time(NULL));
 
@@ -164,16 +199,22 @@ int main(void) {
     int colunas  = LARGURA_JANELA / TAM_CELULA;
     int **grade  = criarMatriz(linhas, colunas);   // matriz dinâmica
 
-    int quantidadeBolas = 12;
+    int quantidadeBolas = 1;
     Bola *bolas = criarBolas(quantidadeBolas);      // vetor dinâmico
+    int contador_celulas_visitadas = 0;
+    int *p_contador = &contador_celulas_visitadas;
+    int *p_quantiaBolas = &quantidadeBolas;
 
     while (!WindowShouldClose()) {
-
         // percorre o vetor usando aritmética de ponteiros:
         // (bolas + i) aponta para o i-ésimo elemento do vetor
         for (int i = 0; i < quantidadeBolas; i++) {
             atualizarBola(bolas + i);
+            marcarVisitaGrade(grade, linhas, colunas, &bolas[i], p_contador);
         }
+
+        // int totalVisitadas = contarCelulasVisitadas(grade, linhas, colunas);
+        // contarCelulasVisitadas(grade, linhas, colunas, p_contador);
 
         gerenciarBolas(&bolas, &quantidadeBolas);
 
@@ -188,6 +229,8 @@ int main(void) {
 
             DrawText("Matriz (int**) e vetor de structs (Bola*) alocados com malloc",
                      10, 10, 18, WHITE);
+            DrawText(TextFormat("Celulas visitadas %d / %d", contador_celulas_visitadas, linhas * colunas), 10, 35, 20, YELLOW);
+            DrawText(TextFormat("Quantidade de bolas na cena: %d", *p_quantiaBolas), 10, 65, 20, RED);
             DrawText("Pressione ESC para sair", 10, ALTURA_JANELA - 25, 16, WHITE);
 
         EndDrawing();

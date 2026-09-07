@@ -1,25 +1,20 @@
 /*
- * Ponteiros + Alocação Dinâmica (vetor e matriz) com raylib
+ * Enum + Struct + Alocação Dinâmica com raylib
  * ---------------------------------------------------------------
- * Este programa desenha:
- *   1) Uma matriz dinâmica (grade de células coloridas) alocada com malloc,
- *      onde cada linha é um ponteiro para um vetor de inteiros.
- *   2) Um um vetor dinâmico de bolinhas (struct Bola) que se movem na tela,
- *      manipuladas via ponteiros.
+ * Um jogador (retângulo) se move pela tela coletando moedas.
+ * As moedas são um VETOR DINÂMICO de struct (malloc), e cada moeda
+ * tem um campo do tipo enum que define sua raridade/cor/valor.
  *
- * Conceitos praticados:
- *   - malloc / free
- *   - ponteiro para ponteiro (int **) para representar matriz
- *   - vetor de structs alocado dinamicamente
- *   - passagem de ponteiros para funções (evita cópias, permite alterar
- *     o dado original)
- *   - aritmética de ponteiros ( *(p + i) é equivalente a p[i] )
+ * Conceitos praticados (evolução da atividade1):
+ *   - enum para representar categorias (TipoMoeda)
+ *   - struct contendo um campo enum
+ *   - malloc / free de um vetor de struct
+ *   - ponteiro para struct (Moeda *) passado para funções que leem
+ *     e alteram o dado original (ex.: marcar moeda como coletada)
+ *   - aritmética de ponteiros para percorrer o vetor
  *
  * Compilar (Linux, com raylib instalada):
- *   gcc exemplo_ponteiros_raylib.c -o exemplo -lraylib -lm -lpthread -ldl -lrt -lX11
- *
- * Compilar (Windows, MinGW):
- *   gcc exemplo_ponteiros_raylib.c -o exemplo.exe -lraylib -lgdi32 -lwinmm
+ *   gcc atividade2.c -o atividade2 -lraylib -lm -lpthread -ldl -lrt -lX11
  */
 
 #include "raylib.h"
@@ -28,134 +23,137 @@
 
 #define LARGURA_JANELA 800
 #define ALTURA_JANELA  600
-#define TAM_CELULA     40   // tamanho de cada célula da grade (matriz)
+#define RAIO_JOGADOR   20.0f
+#define TOTAL_MOEDAS   15
 
+// enum: cada valor representa uma categoria de moeda
+typedef enum {
+    MOEDA_BRONZE,
+    MOEDA_PRATA,
+    MOEDA_OURO,
+    MOEDA_DIAMANTE
+} TipoMoeda;
 
 typedef struct {
-    Vector2 pos;
-    Vector2 vel;
-    float   raio;
-    Color   cor;
-} Bola;
+    Vector2   pos;
+    float     raio;
+    TipoMoeda tipo;
+    int       valor;
+    bool      coletada;
+    float tempoColetada;
+} Moeda;
 
-/* ---------------------------------------------------------------
- * cria uma MATRIZ dinâmica de inteiros (linhas x colunas)
- * Retorna um ponteiro para ponteiro (int **): cada posição do
- * vetor externo aponta para um vetor de inteiros (uma linha).
- * --------------------------------------------------------------- */
-int **criarMatriz(int linhas, int colunas) {
-
-    // aloca o vetor de ponteiros (um ponteiro por linha)
-    int **matriz = (int **)malloc(linhas * sizeof(int *));
-    if (matriz == NULL) return NULL;
-
-    for (int i = 0; i < linhas; i++) {
-        // aloca cada linha como um vetor de inteiros
-        matriz[i] = (int *)malloc(colunas * sizeof(int));
-        for (int j = 0; j < colunas; j++) {
-            // preenche com 0 ou 1 aleatoriamente (dois "tipos" de célula)
-            matriz[i][j] = GetRandomValue(0, 1);
-        }
-    }
-    return matriz;
-}
-
-/* libera a memória da matriz: primeiro cada linha, depois o vetor de linhas */
-void liberarMatriz(int **matriz, int linhas) {
-    for (int i = 0; i < linhas; i++) {
-        free(matriz[i]);   // libera cada linha
-    }
-    free(matriz);           // libera o vetor de ponteiros
-}
-
-/* desenha a matriz na tela, célula por célula */
-void desenharMatriz(int **matriz, int linhas, int colunas) {
-    for (int i = 0; i < linhas; i++) {
-        for (int j = 0; j < colunas; j++) {
-            Color cor = (matriz[i][j] == 1) ? (Color){20, 40, 70, 255}
-                                             : (Color){15, 30, 55, 255};
-            DrawRectangle(j * TAM_CELULA, i * TAM_CELULA,
-                           TAM_CELULA - 2, TAM_CELULA - 2, cor);
-        }
+/* devolve a cor associada a cada tipo do enum */
+Color corDaMoeda(TipoMoeda tipo) {
+    switch (tipo) {
+        case MOEDA_BRONZE: return (Color){160, 90, 40, 255};
+        case MOEDA_PRATA:  return (Color){190, 190, 190, 255};
+        case MOEDA_OURO:   return GOLD;
+        case MOEDA_DIAMANTE: return (Color){0, 255, 255, 255};
+        default:           return WHITE;
     }
 }
 
-/* ---------------------------------------------------------------
- * cria o vetor dinâmico de bolas
- * --------------------------------------------------------------- */
-Bola *criarBolas(int quantidade) {
-    Bola *bolas = (Bola *)malloc(quantidade * sizeof(Bola));
-    if (bolas == NULL) return NULL;
+/* devolve o valor em pontos associado a cada tipo do enum */
+int valorDaMoeda(TipoMoeda tipo) {
+    switch (tipo) {
+        case MOEDA_BRONZE: return 5;
+        case MOEDA_PRATA:  return 10;
+        case MOEDA_OURO:   return 25;
+        case MOEDA_DIAMANTE: return 50;
+        default:           return 0;
+    }
+}
+
+/* cria o vetor dinâmico de moedas, sorteando tipo e posição de cada uma */
+Moeda *criarMoedas(int quantidade) {
+    Moeda *moedas = (Moeda *)malloc(quantidade * sizeof(Moeda));
+    if (moedas == NULL) return NULL;
 
     for (int i = 0; i < quantidade; i++) {
-        // usar (bolas + i) é o mesmo que &bolas[i]: aqui acessamos
-        // o campo via ponteiro para deixar explícito o conceito.
-        Bola *b = (bolas + i);
-        b->pos = (Vector2){ GetRandomValue(50, LARGURA_JANELA - 50),
-                             GetRandomValue(50, ALTURA_JANELA - 50) };
-        b->vel = (Vector2){ (float)GetRandomValue(-4, 4),
-                             (float)GetRandomValue(-4, 4) };
-        b->raio = (float)GetRandomValue(10, 25);
-        b->cor  = (Color){ GetRandomValue(100,255), GetRandomValue(100,255),
-                            GetRandomValue(100,255), 255 };
+        Moeda *m = (moedas + i); // ponteiro para o i-ésimo elemento
+        m->pos      = (Vector2){ GetRandomValue(30, LARGURA_JANELA - 30),
+                                  GetRandomValue(30, ALTURA_JANELA - 30) };
+        m->raio     = 10.0f;
+        // m->tipo     = (TipoMoeda)GetRandomValue(MOEDA_BRONZE, MOEDA_OURO);
+        m->tipo     = (TipoMoeda) GetRandomValue(0, 9) == 0 ? MOEDA_DIAMANTE : (TipoMoeda)GetRandomValue(MOEDA_BRONZE, MOEDA_OURO);
+        m->valor    = valorDaMoeda(m->tipo);
+        m->coletada = false;
+        m->tempoColetada = 0; // moeda começa não coletada
     }
-    return bolas;
+    return moedas;
 }
 
-/* atualiza a posição de UMA bola: recebe um PONTEIRO para a struct,
- * então as alterações afetam diretamente o vetor original (sem cópia) */
-void atualizarBola(Bola *b) {
-    b->pos.x += b->vel.x;
-    b->pos.y += b->vel.y;
+/* recebe um PONTEIRO para a moeda: marca como coletada diretamente no vetor original */
+bool tentarColetar(Moeda *m, Vector2 posJogador, float raioJogador) {
+    if (m->coletada) return false;
 
-    // rebate nas bordas
-    if (b->pos.x - b->raio < 0 || b->pos.x + b->raio > LARGURA_JANELA)
-        b->vel.x *= -1;
-    if (b->pos.y - b->raio < 0 || b->pos.y + b->raio > ALTURA_JANELA)
-        b->vel.y *= -1;
+    float dx = m->pos.x - posJogador.x;
+    float dy = m->pos.y - posJogador.y;
+    float distancia = (dx * dx + dy * dy);
+    float somaRaios = (m->raio + raioJogador) * (m->raio + raioJogador);
+
+    if (distancia <= somaRaios) {
+        m->tempoColetada = GetTime();
+        m->coletada = true;
+        m->pos = (Vector2){ GetRandomValue(30, LARGURA_JANELA - 30),
+                        GetRandomValue(30, ALTURA_JANELA - 30)};
+        return true;
+    }
+    return false;
+}
+
+void desenharMoeda(Moeda *m) {
+    if (m->coletada == true && (GetTime() - m->tempoColetada) < 3.0f) return;
+    m->coletada = false;
+    m->tempoColetada = 0;
+    DrawText(TextFormat("+: %d", m->valor), m->pos.x - 5, m->pos.y-10, 20, BLACK);
+    DrawCircleV(m->pos, m->raio, corDaMoeda(m->tipo));
 }
 
 int main(void) {
     srand((unsigned int)time(NULL));
 
-    InitWindow(LARGURA_JANELA, ALTURA_JANELA,
-               "Ponteiros e Alocacao Dinamica - raylib");
+    InitWindow(LARGURA_JANELA, ALTURA_JANELA, "Atividade 2 - Enum + Struct + Alocacao Dinamica");
     SetTargetFPS(60);
 
-    int linhas   = ALTURA_JANELA / TAM_CELULA;
-    int colunas  = LARGURA_JANELA / TAM_CELULA;
-    int **grade  = criarMatriz(linhas, colunas);   // matriz dinâmica
+    Vector2 jogador = { LARGURA_JANELA / 2.0f, ALTURA_JANELA / 2.0f };
+    int pontuacao = 0;
 
-    int quantidadeBolas = 12;
-    Bola *bolas = criarBolas(quantidadeBolas);      // vetor dinâmico
+    Moeda *moedas = criarMoedas(TOTAL_MOEDAS); // vetor dinâmico de struct
 
     while (!WindowShouldClose()) {
 
-        // percorre o vetor usando aritmética de ponteiros:
-        // (bolas + i) aponta para o i-ésimo elemento do vetor
-        for (int i = 0; i < quantidadeBolas; i++) {
-            atualizarBola(bolas + i);
+        float vel = 250.0f * GetFrameTime();
+        if (IsKeyDown(KEY_RIGHT)) jogador.x += vel;
+        if (IsKeyDown(KEY_LEFT))  jogador.x -= vel;
+        if (IsKeyDown(KEY_UP))    jogador.y -= vel;
+        if (IsKeyDown(KEY_DOWN))  jogador.y += vel;
+
+        // percorre o vetor com aritmética de ponteiros: (moedas + i)
+        for (int i = 0; i < TOTAL_MOEDAS; i++) {
+            Moeda *m = (moedas + i);
+            if (tentarColetar(m, jogador, RAIO_JOGADOR)) {
+                pontuacao += m->valor;
+            }
         }
 
         BeginDrawing();
             ClearBackground(RAYWHITE);
 
-            desenharMatriz(grade, linhas, colunas);
-
-            for (int i = 0; i < quantidadeBolas; i++) {
-                DrawCircleV(bolas[i].pos, bolas[i].raio, bolas[i].cor);
+            for (int i = 0; i < TOTAL_MOEDAS; i++) {
+                desenharMoeda(moedas + i);
             }
 
-            DrawText("Matriz (int**) e vetor de structs (Bola*) alocados com malloc",
-                     10, 10, 18, WHITE);
-            DrawText("Pressione ESC para sair", 10, ALTURA_JANELA - 25, 16, WHITE);
+            DrawCircleV(jogador, RAIO_JOGADOR, BLUE);
+
+            DrawText(TextFormat("Pontuacao: %d", pontuacao), 10, 10, 22, DARKGRAY);
+            DrawText("Setas movem o jogador | ESC sai", 10, ALTURA_JANELA - 25, 16, GRAY);
 
         EndDrawing();
     }
 
-    // libera TODA a memória alocada dinamicamente antes de encerrar
-    free(bolas);
-    liberarMatriz(grade, linhas);
+    free(moedas); // libera o vetor dinâmico
 
     CloseWindow();
     return 0;

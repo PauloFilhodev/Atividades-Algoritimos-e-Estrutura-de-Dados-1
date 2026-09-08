@@ -1,20 +1,24 @@
 /*
- * Enum + Struct + Alocação Dinâmica com raylib
+ * Union + Enum + Struct + Alocação Dinâmica com raylib
  * ---------------------------------------------------------------
- * Um jogador (retângulo) se move pela tela coletando moedas.
- * As moedas são um VETOR DINÂMICO de struct (malloc), e cada moeda
- * tem um campo do tipo enum que define sua raridade/cor/valor.
+ * Evolução da atividade2: agora os itens coletáveis podem ser de
+ * dois tipos bem diferentes (uma ARMA ou uma POÇÃO) e usam uma
+ * UNION para guardar, no mesmo espaço de memória, o dado específico
+ * de cada tipo. O campo enum funciona como "tag" que diz qual campo
+ * da union deve ser lido (padrão conhecido como "tagged union").
  *
- * Conceitos praticados (evolução da atividade1):
- *   - enum para representar categorias (TipoMoeda)
- *   - struct contendo um campo enum
- *   - malloc / free de um vetor de struct
- *   - ponteiro para struct (Moeda *) passado para funções que leem
- *     e alteram o dado original (ex.: marcar moeda como coletada)
- *   - aritmética de ponteiros para percorrer o vetor
+ * Conceitos praticados:
+ *   - union (DadosItem): arma e poção nunca existem ao mesmo tempo,
+ *     então compartilham o mesmo espaço de memória
+ *   - enum (TipoItem) usado como "tag" para saber qual campo da
+ *     union é válido naquele momento
+ *   - struct que combina enum + union + outros campos
+ *   - malloc / free de um vetor dinâmico de struct
+ *   - ponteiro para struct (Item *, Jogador *) passado para funções
+ *     que alteram o dado original
  *
  * Compilar (Linux, com raylib instalada):
- *   gcc atividade2.c -o atividade2 -lraylib -lm -lpthread -ldl -lrt -lX11
+ *   gcc atividade3.c -o atividade3 -lraylib -lm -lpthread -ldl -lrt -lX11
  */
 
 #include "raylib.h"
@@ -24,136 +28,151 @@
 #define LARGURA_JANELA 800
 #define ALTURA_JANELA  600
 #define RAIO_JOGADOR   20.0f
-#define TOTAL_MOEDAS   15
+#define TOTAL_ITENS    10
 
-// enum: cada valor representa uma categoria de moeda
 typedef enum {
-    MOEDA_BRONZE,
-    MOEDA_PRATA,
-    MOEDA_OURO,
-    MOEDA_DIAMANTE
-} TipoMoeda;
+    ITEM_ARMA,
+    ITEM_POCAO,
+    ITEM_ESCUDO
+} TipoItem;
+
+typedef struct {
+    int absorcao;
+} DadosEscudo;
+
+typedef struct {
+    float dano;
+    int   alcance;
+} DadosArma;
+
+typedef struct {
+    int cura;
+} DadosPocao;
+
+/* union: em cada Item só um destes dois campos é válido por vez,
+ * e isso é decidido pelo campo "tipo" (enum) da struct Item */
+typedef union {
+    DadosArma  arma;
+    DadosPocao pocao;
+    DadosEscudo escudo;
+} DadosItem;
 
 typedef struct {
     Vector2   pos;
     float     raio;
-    TipoMoeda tipo;
-    int       valor;
-    bool      coletada;
-    float tempoColetada;
-} Moeda;
+    TipoItem  tipo;
+    DadosItem dados;
+    bool      coletado;
+} Item;
 
-/* devolve a cor associada a cada tipo do enum */
-Color corDaMoeda(TipoMoeda tipo) {
-    switch (tipo) {
-        case MOEDA_BRONZE: return (Color){160, 90, 40, 255};
-        case MOEDA_PRATA:  return (Color){190, 190, 190, 255};
-        case MOEDA_OURO:   return GOLD;
-        case MOEDA_DIAMANTE: return (Color){0, 255, 255, 255};
-        default:           return WHITE;
-    }
-}
+typedef struct {
+    Vector2 pos;
+    float   raio;
+    int     vida;
+    float   dano;
+    int armadura;
+} Jogador;
 
-/* devolve o valor em pontos associado a cada tipo do enum */
-int valorDaMoeda(TipoMoeda tipo) {
-    switch (tipo) {
-        case MOEDA_BRONZE: return 5;
-        case MOEDA_PRATA:  return 10;
-        case MOEDA_OURO:   return 25;
-        case MOEDA_DIAMANTE: return 50;
-        default:           return 0;
-    }
-}
-
-/* cria o vetor dinâmico de moedas, sorteando tipo e posição de cada uma */
-Moeda *criarMoedas(int quantidade) {
-    Moeda *moedas = (Moeda *)malloc(quantidade * sizeof(Moeda));
-    if (moedas == NULL) return NULL;
+/* cria o vetor dinâmico de itens sorteando tipo e preenchendo a
+ * union de acordo com o tipo sorteado */
+Item *criarItens(int quantidade) {
+    Item *itens = (Item *)malloc(quantidade * sizeof(Item));
+    if (itens == NULL) return NULL;
 
     for (int i = 0; i < quantidade; i++) {
-        Moeda *m = (moedas + i); // ponteiro para o i-ésimo elemento
-        m->pos      = (Vector2){ GetRandomValue(30, LARGURA_JANELA - 30),
-                                  GetRandomValue(30, ALTURA_JANELA - 30) };
-        m->raio     = 10.0f;
-        // m->tipo     = (TipoMoeda)GetRandomValue(MOEDA_BRONZE, MOEDA_OURO);
-        m->tipo     = (TipoMoeda) GetRandomValue(0, 9) == 0 ? MOEDA_DIAMANTE : (TipoMoeda)GetRandomValue(MOEDA_BRONZE, MOEDA_OURO);
-        m->valor    = valorDaMoeda(m->tipo);
-        m->coletada = false;
-        m->tempoColetada = 0; // moeda começa não coletada
+        Item *it = (itens + i);
+        it->pos      = (Vector2){ GetRandomValue(30, LARGURA_JANELA - 30),
+                                   GetRandomValue(30, ALTURA_JANELA - 30) };
+        it->raio     = 12.0f;
+        it->coletado = false;
+        it->tipo     = (TipoItem)GetRandomValue(ITEM_ARMA, ITEM_ESCUDO);
+
+        if (it->tipo == ITEM_ARMA) {
+            it->dados.arma.dano    = (float)GetRandomValue(2, 8);
+            it->dados.arma.alcance = GetRandomValue(1, 3);
+        } else if (it->tipo == ITEM_ESCUDO) {
+            it->dados.escudo.absorcao = GetRandomValue(5, 15);
+        } else {
+            // it->dados.pocao.cura = GetRandomValue(10, 30);
+            it->dados.pocao.cura = GetRandomValue(0, 9) < 3 ? (GetRandomValue(-10, -30)) : GetRandomValue(10, 30);
+        }
     }
-    return moedas;
+    return itens;
 }
 
-/* recebe um PONTEIRO para a moeda: marca como coletada diretamente no vetor original */
-bool tentarColetar(Moeda *m, Vector2 posJogador, float raioJogador) {
-    if (m->coletada) return false;
-
-    float dx = m->pos.x - posJogador.x;
-    float dy = m->pos.y - posJogador.y;
-    float distancia = (dx * dx + dy * dy);
-    float somaRaios = (m->raio + raioJogador) * (m->raio + raioJogador);
-
-    if (distancia <= somaRaios) {
-        m->tempoColetada = GetTime();
-        m->coletada = true;
-        m->pos = (Vector2){ GetRandomValue(30, LARGURA_JANELA - 30),
-                        GetRandomValue(30, ALTURA_JANELA - 30)};
-        return true;
+/* recebe PONTEIROS para o jogador e para o item: aplica o efeito do
+ * item lendo o campo correto da union de acordo com o enum "tipo" */
+void aplicarItem(Jogador *j, Item *item) {
+    switch (item->tipo) {
+        case ITEM_ARMA:
+            j->dano += item->dados.arma.dano;
+            break;
+        case ITEM_POCAO:
+            j->vida += item->dados.pocao.cura;
+            break;
+        case ITEM_ESCUDO:
+            j->armadura += item->dados.escudo.absorcao;
+            break;
     }
-    return false;
+    item->coletado = true;
 }
 
-void desenharMoeda(Moeda *m) {
-    if (m->coletada == true && (GetTime() - m->tempoColetada) < 3.0f) return;
-    m->coletada = false;
-    m->tempoColetada = 0;
-    DrawText(TextFormat("+: %d", m->valor), m->pos.x - 5, m->pos.y-10, 20, BLACK);
-    DrawCircleV(m->pos, m->raio, corDaMoeda(m->tipo));
+bool colidiu(Vector2 a, float raioA, Vector2 b, float raioB) {
+    float dx = a.x - b.x;
+    float dy = a.y - b.y;
+    float distancia2 = dx * dx + dy * dy;
+    float somaRaios2 = (raioA + raioB) * (raioA + raioB);
+    return distancia2 <= somaRaios2;
+}
+
+void desenharItem(Item *item) {
+    if (item->coletado) return;
+    // Color cor = (item->tipo == ITEM_ARMA) ? RED : GREEN;
+    Color cor = (item->tipo == ITEM_ARMA) ? RED : item->tipo == ITEM_POCAO ? item->dados.pocao.cura < 0 ? PURPLE : GREEN : GRAY;
+    DrawCircleV(item->pos, item->raio, cor);
 }
 
 int main(void) {
     srand((unsigned int)time(NULL));
 
-    InitWindow(LARGURA_JANELA, ALTURA_JANELA, "Atividade 2 - Enum + Struct + Alocacao Dinamica");
+    InitWindow(LARGURA_JANELA, ALTURA_JANELA, "Atividade 3 - Union + Enum + Struct");
     SetTargetFPS(60);
 
-    Vector2 jogador = { LARGURA_JANELA / 2.0f, ALTURA_JANELA / 2.0f };
-    int pontuacao = 0;
-
-    Moeda *moedas = criarMoedas(TOTAL_MOEDAS); // vetor dinâmico de struct
+    Jogador jogador = { { LARGURA_JANELA / 2.0f, ALTURA_JANELA / 2.0f }, RAIO_JOGADOR, 100, 5.0f, 0 };
+    Item *itens = criarItens(TOTAL_ITENS); // vetor dinâmico de struct com union
 
     while (!WindowShouldClose()) {
 
         float vel = 250.0f * GetFrameTime();
-        if (IsKeyDown(KEY_RIGHT)) jogador.x += vel;
-        if (IsKeyDown(KEY_LEFT))  jogador.x -= vel;
-        if (IsKeyDown(KEY_UP))    jogador.y -= vel;
-        if (IsKeyDown(KEY_DOWN))  jogador.y += vel;
+        if (IsKeyDown(KEY_RIGHT)) jogador.pos.x += vel;
+        if (IsKeyDown(KEY_LEFT))  jogador.pos.x -= vel;
+        if (IsKeyDown(KEY_UP))    jogador.pos.y -= vel;
+        if (IsKeyDown(KEY_DOWN))  jogador.pos.y += vel;
 
-        // percorre o vetor com aritmética de ponteiros: (moedas + i)
-        for (int i = 0; i < TOTAL_MOEDAS; i++) {
-            Moeda *m = (moedas + i);
-            if (tentarColetar(m, jogador, RAIO_JOGADOR)) {
-                pontuacao += m->valor;
+        for (int i = 0; i < TOTAL_ITENS; i++) {
+            Item *it = (itens + i);
+            if (!it->coletado && colidiu(jogador.pos, jogador.raio, it->pos, it->raio)) {
+                aplicarItem(&jogador, it); // &jogador: ponteiro para struct
             }
         }
 
         BeginDrawing();
             ClearBackground(RAYWHITE);
 
-            for (int i = 0; i < TOTAL_MOEDAS; i++) {
-                desenharMoeda(moedas + i);
+            for (int i = 0; i < TOTAL_ITENS; i++) {
+                desenharItem(itens + i);
             }
 
-            DrawCircleV(jogador, RAIO_JOGADOR, BLUE);
+            DrawCircleV(jogador.pos, jogador.raio, BLUE);
 
-            DrawText(TextFormat("Pontuacao: %d", pontuacao), 10, 10, 22, DARKGRAY);
+            DrawText(TextFormat("Vida: %d   Dano: %.1f   Armadura: %d", jogador.vida, jogador.dano, jogador.armadura), 10, 10, 22, DARKGRAY);
+            DrawText("Vermelho = arma (aumenta dano) | Verde = pocao (cura) | Roxo = absorve dano (armadura)", 10, 34, 18, GRAY);
             DrawText("Setas movem o jogador | ESC sai", 10, ALTURA_JANELA - 25, 16, GRAY);
 
         EndDrawing();
     }
 
-    free(moedas); // libera o vetor dinâmico
+    free(itens); // libera o vetor dinâmico
 
     CloseWindow();
     return 0;

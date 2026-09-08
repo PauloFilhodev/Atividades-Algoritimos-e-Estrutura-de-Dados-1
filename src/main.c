@@ -1,25 +1,24 @@
 /*
- * Ponteiros + Alocação Dinâmica (vetor e matriz) com raylib
+ * Union + Enum + Struct + Alocação Dinâmica com raylib
  * ---------------------------------------------------------------
- * Este programa desenha:
- *   1) Uma matriz dinâmica (grade de células coloridas) alocada com malloc,
- *      onde cada linha é um ponteiro para um vetor de inteiros.
- *   2) Um um vetor dinâmico de bolinhas (struct Bola) que se movem na tela,
- *      manipuladas via ponteiros.
+ * Evolução da atividade2: agora os itens coletáveis podem ser de
+ * dois tipos bem diferentes (uma ARMA ou uma POÇÃO) e usam uma
+ * UNION para guardar, no mesmo espaço de memória, o dado específico
+ * de cada tipo. O campo enum funciona como "tag" que diz qual campo
+ * da union deve ser lido (padrão conhecido como "tagged union").
  *
  * Conceitos praticados:
- *   - malloc / free
- *   - ponteiro para ponteiro (int **) para representar matriz
- *   - vetor de structs alocado dinamicamente
- *   - passagem de ponteiros para funções (evita cópias, permite alterar
- *     o dado original)
- *   - aritmética de ponteiros ( *(p + i) é equivalente a p[i] )
+ *   - union (DadosItem): arma e poção nunca existem ao mesmo tempo,
+ *     então compartilham o mesmo espaço de memória
+ *   - enum (TipoItem) usado como "tag" para saber qual campo da
+ *     union é válido naquele momento
+ *   - struct que combina enum + union + outros campos
+ *   - malloc / free de um vetor dinâmico de struct
+ *   - ponteiro para struct (Item *, Jogador *) passado para funções
+ *     que alteram o dado original
  *
  * Compilar (Linux, com raylib instalada):
- *   gcc exemplo_ponteiros_raylib.c -o exemplo -lraylib -lm -lpthread -ldl -lrt -lX11
- *
- * Compilar (Windows, MinGW):
- *   gcc exemplo_ponteiros_raylib.c -o exemplo.exe -lraylib -lgdi32 -lwinmm
+ *   gcc atividade3.c -o atividade3 -lraylib -lm -lpthread -ldl -lrt -lX11
  */
 
 #include "raylib.h"
@@ -28,91 +27,109 @@
 
 #define LARGURA_JANELA 800
 #define ALTURA_JANELA  600
-#define TAM_CELULA     40   // tamanho de cada célula da grade (matriz)
+#define RAIO_JOGADOR   20.0f
+#define TOTAL_ITENS    10
 
+typedef enum {
+    ITEM_ARMA,
+    ITEM_POCAO,
+    ITEM_ESCUDO
+} TipoItem;
+
+typedef struct {
+    int absorcao;
+} DadosEscudo;
+
+typedef struct {
+    float dano;
+    int   alcance;
+} DadosArma;
+
+typedef struct {
+    int cura;
+} DadosPocao;
+
+/* union: em cada Item só um destes dois campos é válido por vez,
+ * e isso é decidido pelo campo "tipo" (enum) da struct Item */
+typedef union {
+    DadosArma  arma;
+    DadosPocao pocao;
+    DadosEscudo escudo;
+} DadosItem;
+
+typedef struct {
+    Vector2   pos;
+    float     raio;
+    TipoItem  tipo;
+    DadosItem dados;
+    bool      coletado;
+} Item;
 
 typedef struct {
     Vector2 pos;
-    Vector2 vel;
     float   raio;
-    Color   cor;
-} Bola;
+    int     vida;
+    float   dano;
+    int armadura;
+} Jogador;
 
-/* ---------------------------------------------------------------
- * cria uma MATRIZ dinâmica de inteiros (linhas x colunas)
- * Retorna um ponteiro para ponteiro (int **): cada posição do
- * vetor externo aponta para um vetor de inteiros (uma linha).
- * --------------------------------------------------------------- */
-int **criarMatriz(int linhas, int colunas) {
-
-    // aloca o vetor de ponteiros (um ponteiro por linha)
-    int **matriz = (int **)malloc(linhas * sizeof(int *));
-    if (matriz == NULL) return NULL;
-
-    for (int i = 0; i < linhas; i++) {
-        // aloca cada linha como um vetor de inteiros
-        matriz[i] = (int *)malloc(colunas * sizeof(int));
-        for (int j = 0; j < colunas; j++) {
-            // preenche com 0 ou 1 aleatoriamente (dois "tipos" de célula)
-            matriz[i][j] = GetRandomValue(0, 1);
-        }
-    }
-    return matriz;
-}
-
-/* libera a memória da matriz: primeiro cada linha, depois o vetor de linhas */
-void liberarMatriz(int **matriz, int linhas) {
-    for (int i = 0; i < linhas; i++) {
-        free(matriz[i]);   // libera cada linha
-    }
-    free(matriz);           // libera o vetor de ponteiros
-}
-
-/* desenha a matriz na tela, célula por célula */
-void desenharMatriz(int **matriz, int linhas, int colunas) {
-    for (int i = 0; i < linhas; i++) {
-        for (int j = 0; j < colunas; j++) {
-            Color cor = (matriz[i][j] == 1) ? (Color){20, 40, 70, 255}
-                                             : (Color){15, 30, 55, 255};
-            DrawRectangle(j * TAM_CELULA, i * TAM_CELULA,
-                           TAM_CELULA - 2, TAM_CELULA - 2, cor);
-        }
-    }
-}
-
-/* ---------------------------------------------------------------
- * cria o vetor dinâmico de bolas
- * --------------------------------------------------------------- */
-Bola *criarBolas(int quantidade) {
-    Bola *bolas = (Bola *)malloc(quantidade * sizeof(Bola));
-    if (bolas == NULL) return NULL;
+/* cria o vetor dinâmico de itens sorteando tipo e preenchendo a
+ * union de acordo com o tipo sorteado */
+Item *criarItens(int quantidade) {
+    Item *itens = (Item *)malloc(quantidade * sizeof(Item));
+    if (itens == NULL) return NULL;
 
     for (int i = 0; i < quantidade; i++) {
-        // usar (bolas + i) é o mesmo que &bolas[i]: aqui acessamos
-        // o campo via ponteiro para deixar explícito o conceito.
-        Bola *b = (bolas + i);
-        b->pos = (Vector2){ GetRandomValue(50, LARGURA_JANELA - 50),
-                             GetRandomValue(50, ALTURA_JANELA - 50) };
-        b->vel = (Vector2){ (float)GetRandomValue(-4, 4),
-                             (float)GetRandomValue(-4, 4) };
-        b->raio = (float)GetRandomValue(10, 25);
-        b->cor  = (Color){ GetRandomValue(100,255), GetRandomValue(100,255),
-                            GetRandomValue(100,255), 255 };
+        Item *it = (itens + i);
+        it->pos      = (Vector2){ GetRandomValue(30, LARGURA_JANELA - 30),
+                                   GetRandomValue(30, ALTURA_JANELA - 30) };
+        it->raio     = 12.0f;
+        it->coletado = false;
+        it->tipo     = (TipoItem)GetRandomValue(ITEM_ARMA, ITEM_ESCUDO);
+
+        if (it->tipo == ITEM_ARMA) {
+            it->dados.arma.dano    = (float)GetRandomValue(2, 8);
+            it->dados.arma.alcance = GetRandomValue(1, 3);
+        } else if (it->tipo == ITEM_ESCUDO) {
+            it->dados.escudo.absorcao = GetRandomValue(5, 15);
+        } else {
+            // it->dados.pocao.cura = GetRandomValue(10, 30);
+            it->dados.pocao.cura = GetRandomValue(0, 9) < 3 ? (GetRandomValue(-10, -30)) : GetRandomValue(10, 30);
+        }
     }
-    return bolas;
+    return itens;
 }
 
-/* atualiza a posição de UMA bola: recebe um PONTEIRO para a struct,
- * então as alterações afetam diretamente o vetor original (sem cópia) */
-void atualizarBola(Bola *b) {
-    b->pos.x += b->vel.x;
-    b->pos.y += b->vel.y;
+/* recebe PONTEIROS para o jogador e para o item: aplica o efeito do
+ * item lendo o campo correto da union de acordo com o enum "tipo" */
+void aplicarItem(Jogador *j, Item *item) {
+    switch (item->tipo) {
+        case ITEM_ARMA:
+            j->dano += item->dados.arma.dano;
+            break;
+        case ITEM_POCAO:
+            j->vida += item->dados.pocao.cura;
+            break;
+        case ITEM_ESCUDO:
+            j->armadura += item->dados.escudo.absorcao;
+            break;
+    }
+    item->coletado = true;
+}
 
-    // rebate nas bordas
-    if (b->pos.x - b->raio < 0 || b->pos.x + b->raio > LARGURA_JANELA)
-        b->vel.x *= -1;
-    if (b->pos.y - b->raio < 0 || b->pos.y + b->raio > ALTURA_JANELA)
-        b->vel.y *= -1;
+bool colidiu(Vector2 a, float raioA, Vector2 b, float raioB) {
+    float dx = a.x - b.x;
+    float dy = a.y - b.y;
+    float distancia2 = dx * dx + dy * dy;
+    float somaRaios2 = (raioA + raioB) * (raioA + raioB);
+    return distancia2 <= somaRaios2;
+}
+
+void desenharItem(Item *item) {
+    if (item->coletado) return;
+    // Color cor = (item->tipo == ITEM_ARMA) ? RED : GREEN;
+    Color cor = (item->tipo == ITEM_ARMA) ? RED : item->tipo == ITEM_POCAO ? item->dados.pocao.cura < 0 ? PURPLE : GREEN : GRAY;
+    DrawCircleV(item->pos, item->raio, cor);
 }
 
 void gerenciarBolas(Bola **bolas, int *quantidadeBolas)
@@ -156,23 +173,25 @@ void gerenciarBolas(Bola **bolas, int *quantidadeBolas)
 int main(void) {
     srand((unsigned int)time(NULL));
 
-    InitWindow(LARGURA_JANELA, ALTURA_JANELA,
-               "Ponteiros e Alocacao Dinamica - raylib");
+    InitWindow(LARGURA_JANELA, ALTURA_JANELA, "Atividade 3 - Union + Enum + Struct");
     SetTargetFPS(60);
 
-    int linhas   = ALTURA_JANELA / TAM_CELULA;
-    int colunas  = LARGURA_JANELA / TAM_CELULA;
-    int **grade  = criarMatriz(linhas, colunas);   // matriz dinâmica
-
-    int quantidadeBolas = 12;
-    Bola *bolas = criarBolas(quantidadeBolas);      // vetor dinâmico
+    Jogador jogador = { { LARGURA_JANELA / 2.0f, ALTURA_JANELA / 2.0f }, RAIO_JOGADOR, 100, 5.0f, 0 };
+    Item *itens = criarItens(TOTAL_ITENS); // vetor dinâmico de struct com union
 
     while (!WindowShouldClose()) {
 
-        // percorre o vetor usando aritmética de ponteiros:
-        // (bolas + i) aponta para o i-ésimo elemento do vetor
-        for (int i = 0; i < quantidadeBolas; i++) {
-            atualizarBola(bolas + i);
+        float vel = 250.0f * GetFrameTime();
+        if (IsKeyDown(KEY_RIGHT)) jogador.pos.x += vel;
+        if (IsKeyDown(KEY_LEFT))  jogador.pos.x -= vel;
+        if (IsKeyDown(KEY_UP))    jogador.pos.y -= vel;
+        if (IsKeyDown(KEY_DOWN))  jogador.pos.y += vel;
+
+        for (int i = 0; i < TOTAL_ITENS; i++) {
+            Item *it = (itens + i);
+            if (!it->coletado && colidiu(jogador.pos, jogador.raio, it->pos, it->raio)) {
+                aplicarItem(&jogador, it); // &jogador: ponteiro para struct
+            }
         }
 
         gerenciarBolas(&bolas, &quantidadeBolas);
@@ -180,22 +199,20 @@ int main(void) {
         BeginDrawing();
             ClearBackground(RAYWHITE);
 
-            desenharMatriz(grade, linhas, colunas);
-
-            for (int i = 0; i < quantidadeBolas; i++) {
-                DrawCircleV(bolas[i].pos, bolas[i].raio, bolas[i].cor);
+            for (int i = 0; i < TOTAL_ITENS; i++) {
+                desenharItem(itens + i);
             }
 
-            DrawText("Matriz (int**) e vetor de structs (Bola*) alocados com malloc",
-                     10, 10, 18, WHITE);
-            DrawText("Pressione ESC para sair", 10, ALTURA_JANELA - 25, 16, WHITE);
+            DrawCircleV(jogador.pos, jogador.raio, BLUE);
+
+            DrawText(TextFormat("Vida: %d   Dano: %.1f   Armadura: %d", jogador.vida, jogador.dano, jogador.armadura), 10, 10, 22, DARKGRAY);
+            DrawText("Vermelho = arma (aumenta dano) | Verde = pocao (cura) | Roxo = absorve dano (armadura)", 10, 34, 18, GRAY);
+            DrawText("Setas movem o jogador | ESC sai", 10, ALTURA_JANELA - 25, 16, GRAY);
 
         EndDrawing();
     }
 
-    // libera TODA a memória alocada dinamicamente antes de encerrar
-    free(bolas);
-    liberarMatriz(grade, linhas);
+    free(itens); // libera o vetor dinâmico
 
     CloseWindow();
     return 0;

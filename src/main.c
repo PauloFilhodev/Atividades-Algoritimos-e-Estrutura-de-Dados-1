@@ -1,135 +1,143 @@
 /*
- * Union + Enum + Struct + Alocação Dinâmica com raylib
+ * Ponteiros para Struct + Vetor de Struct com raylib
  * ---------------------------------------------------------------
- * Evolução da atividade2: agora os itens coletáveis podem ser de
- * dois tipos bem diferentes (uma ARMA ou uma POÇÃO) e usam uma
- * UNION para guardar, no mesmo espaço de memória, o dado específico
- * de cada tipo. O campo enum funciona como "tag" que diz qual campo
- * da union deve ser lido (padrão conhecido como "tagged union").
+ * Evolução da atividade3: agora o foco é em como PONTEIROS PARA
+ * STRUCT permitem localizar e alterar um elemento específico dentro
+ * de um vetor de struct, sem copiar a struct inteira.
+ *
+ * O vetor de inimigos é um VETOR DE STRUCT (bloco contíguo, alocado
+ * uma única vez com malloc). As funções recebem e retornam
+ * "Inimigo *" (ponteiro para struct) para localizar e modificar um
+ * elemento específico desse vetor.
  *
  * Conceitos praticados:
- *   - union (DadosItem): arma e poção nunca existem ao mesmo tempo,
- *     então compartilham o mesmo espaço de memória
- *   - enum (TipoItem) usado como "tag" para saber qual campo da
- *     union é válido naquele momento
- *   - struct que combina enum + union + outros campos
- *   - malloc / free de um vetor dinâmico de struct
- *   - ponteiro para struct (Item *, Jogador *) passado para funções
- *     que alteram o dado original
+ *   - vetor de struct (bloco contíguo de memória)
+ *   - ponteiro para struct como retorno de função (localizar um
+ *     elemento dentro do vetor e devolver o endereço dele)
+ *   - ponteiro para struct como parâmetro de função (alterar o
+ *     elemento apontado diretamente, sem cópia)
+ *   - enum para representar o estado de cada inimigo
+ *   - malloc / free do vetor
  *
  * Compilar (Linux, com raylib instalada):
- *   gcc atividade3.c -o atividade3 -lraylib -lm -lpthread -ldl -lrt -lX11
+ *   gcc atividade4.c -o atividade4 -lraylib -lm -lpthread -ldl -lrt -lX11
  */
 
 #include "raylib.h"
-#include <stdlib.h>
+#include <stdlib.h> 
 #include <time.h>
+#include <math.h>
 
 #define LARGURA_JANELA 800
 #define ALTURA_JANELA  600
 #define RAIO_JOGADOR   20.0f
-#define TOTAL_ITENS    10
+#define TOTAL_INIMIGOS 8
+#define DANO_TIRO      20
+#define MAX_VIDA 60
 
 typedef enum {
-    ITEM_ARMA,
-    ITEM_POCAO,
-    ITEM_ESCUDO
-} TipoItem;
+    INIMIGO_VIVO,
+    INIMIGO_MORTO
+} EstadoInimigo;
 
 typedef struct {
-    int absorcao;
-} DadosEscudo;
+    Vector2       pos;
+    float         raio;
+    int           vida;
+    EstadoInimigo estado;
+} Inimigo;
 
-typedef struct {
-    float dano;
-    int   alcance;
-} DadosArma;
+/* preenche o vetor de struct (recebido por ponteiro) com valores iniciais */
+void inicializarInimigos(Inimigo *vetor, int n) {
+    for (int i = 0; i < n; i++) {
+        Inimigo *ini = (vetor + i); // ponteiro para o i-ésimo elemento
+        ini->pos    = (Vector2){ GetRandomValue(30, LARGURA_JANELA - 30),
+                                  GetRandomValue(30, ALTURA_JANELA - 30) };
+        ini->raio   = 15.0f;
+        ini->vida   = GetRandomValue(20, MAX_VIDA);
+        ini->estado = INIMIGO_VIVO;
+    }
+}
 
-typedef struct {
-    int cura;
-} DadosPocao;
+/* recebe um ponteiro para UM inimigo específico do vetor e altera
+ * a vida/estado diretamente na memória original (sem cópia) */
+void atingirInimigo(Inimigo *inimigo, int dano) {
+    if (inimigo == NULL || inimigo->estado == INIMIGO_MORTO) return;
 
-/* union: em cada Item só um destes dois campos é válido por vez,
- * e isso é decidido pelo campo "tipo" (enum) da struct Item */
-typedef union {
-    DadosArma  arma;
-    DadosPocao pocao;
-    DadosEscudo escudo;
-} DadosItem;
+    inimigo->vida -= dano;
+    if (inimigo->vida <= 0) {
+        inimigo->vida = 0;
+        inimigo->estado = INIMIGO_MORTO;
+    }
+}
 
-typedef struct {
-    Vector2   pos;
-    float     raio;
-    TipoItem  tipo;
-    DadosItem dados;
-    bool      coletado;
-} Item;
+/* percorre o vetor de struct e RETORNA UM PONTEIRO para o inimigo
+ * vivo mais próximo da posição informada (ou NULL se não houver) */
+Inimigo *encontrarInimigoMaisProximo(Inimigo *vetor, int n, Vector2 posJogador) {
+    Inimigo *maisProximo = NULL;
+    float menorDistancia = 0.0f;
 
-typedef struct {
-    Vector2 pos;
-    float   raio;
-    int     vida;
-    float   dano;
-    int armadura;
-} Jogador;
+    for (int i = 0; i < n; i++) {
+        Inimigo *ini = (vetor + i);
+        if (ini->estado == INIMIGO_MORTO) continue;
 
-/* cria o vetor dinâmico de itens sorteando tipo e preenchendo a
- * union de acordo com o tipo sorteado */
-Item *criarItens(int quantidade) {
-    Item *itens = (Item *)malloc(quantidade * sizeof(Item));
-    if (itens == NULL) return NULL;
+        float dx = ini->pos.x - posJogador.x;
+        float dy = ini->pos.y - posJogador.y;
+        float distancia = sqrtf(dx * dx + dy * dy);
 
-    for (int i = 0; i < quantidade; i++) {
-        Item *it = (itens + i);
-        it->pos      = (Vector2){ GetRandomValue(30, LARGURA_JANELA - 30),
-                                   GetRandomValue(30, ALTURA_JANELA - 30) };
-        it->raio     = 12.0f;
-        it->coletado = false;
-        it->tipo     = (TipoItem)GetRandomValue(ITEM_ARMA, ITEM_ESCUDO);
-
-        if (it->tipo == ITEM_ARMA) {
-            it->dados.arma.dano    = (float)GetRandomValue(2, 8);
-            it->dados.arma.alcance = GetRandomValue(1, 3);
-        } else if (it->tipo == ITEM_ESCUDO) {
-            it->dados.escudo.absorcao = GetRandomValue(5, 15);
-        } else {
-            // it->dados.pocao.cura = GetRandomValue(10, 30);
-            it->dados.pocao.cura = GetRandomValue(0, 9) < 3 ? (GetRandomValue(-10, -30)) : GetRandomValue(10, 30);
+        if (maisProximo == NULL || distancia < menorDistancia) {
+            maisProximo = ini;
+            menorDistancia = distancia;
         }
     }
-    return itens;
+    return maisProximo;
 }
 
-/* recebe PONTEIROS para o jogador e para o item: aplica o efeito do
- * item lendo o campo correto da union de acordo com o enum "tipo" */
-void aplicarItem(Jogador *j, Item *item) {
-    switch (item->tipo) {
-        case ITEM_ARMA:
-            j->dano += item->dados.arma.dano;
-            break;
-        case ITEM_POCAO:
-            j->vida += item->dados.pocao.cura;
-            break;
-        case ITEM_ESCUDO:
-            j->armadura += item->dados.escudo.absorcao;
-            break;
+void curarTodos(Inimigo *vetor, int n, int cura)
+{
+    for (int i = 0; i < n; i++)
+    {
+        Inimigo *atual = (vetor + i);
+
+        if (atual->estado != INIMIGO_MORTO)
+        {
+            atual->vida += cura;
+        }
     }
-    item->coletado = true;
 }
 
-bool colidiu(Vector2 a, float raioA, Vector2 b, float raioB) {
-    float dx = a.x - b.x;
-    float dy = a.y - b.y;
-    float distancia2 = dx * dx + dy * dy;
-    float somaRaios2 = (raioA + raioB) * (raioA + raioB);
-    return distancia2 <= somaRaios2;
+Inimigo *encontrarInimigoMaisFraco(Inimigo *vetor_inimigos, int max_inimigos)
+{
+    int menor_vida = vetor_inimigos->vida;
+    Inimigo *i_mais_fraco;
+    for (int i = 0; i < max_inimigos; i++)
+    {
+        Inimigo *i_atual = (vetor_inimigos + i);
+        if (i_atual->estado == INIMIGO_MORTO) {
+            continue;
+        }
+        
+        if (i_atual->vida < menor_vida)
+        {
+            i_mais_fraco = i_atual;
+            menor_vida = i_mais_fraco->vida;
+        } else if (i_atual->vida == menor_vida)
+        {
+            continue;
+        }
+    }
+
+    if (!i_mais_fraco) return NULL;
+    return i_mais_fraco;
 }
 
-void desenharItem(Item *item) {
-    if (item->coletado) return;
-    // Color cor = (item->tipo == ITEM_ARMA) ? RED : GREEN;
-    Color cor = (item->tipo == ITEM_ARMA) ? RED : item->tipo == ITEM_POCAO ? item->dados.pocao.cura < 0 ? PURPLE : GREEN : GRAY;
-    DrawCircleV(item->pos, item->raio, cor);
+void desenharInimigo(Inimigo *ini) {
+    if (ini->estado == INIMIGO_MORTO) return;
+    if (ini->vida > MAX_VIDA) ini->vida = MAX_VIDA;
+    Color cor = (ini->vida > 30) ? MAROON : ORANGE;
+    
+    DrawCircleV(ini->pos, ini->raio, cor);
+    DrawText(TextFormat("%d", ini->vida), ini->pos.x - 8, ini->pos.y - 26, 14, BLACK);
 }
 
 void gerenciarBolas(Bola **bolas, int *quantidadeBolas)
@@ -173,25 +181,31 @@ void gerenciarBolas(Bola **bolas, int *quantidadeBolas)
 int main(void) {
     srand((unsigned int)time(NULL));
 
-    InitWindow(LARGURA_JANELA, ALTURA_JANELA, "Atividade 3 - Union + Enum + Struct");
+    InitWindow(LARGURA_JANELA, ALTURA_JANELA, "Atividade 4 - Ponteiros para Struct + Vetor de Struct");
     SetTargetFPS(60);
 
-    Jogador jogador = { { LARGURA_JANELA / 2.0f, ALTURA_JANELA / 2.0f }, RAIO_JOGADOR, 100, 5.0f, 0 };
-    Item *itens = criarItens(TOTAL_ITENS); // vetor dinâmico de struct com union
+    Vector2 jogador = { LARGURA_JANELA / 2.0f, ALTURA_JANELA / 2.0f };
+
+    // vetor de struct: um único bloco contíguo de memória com TOTAL_INIMIGOS structs
+    Inimigo *inimigos = (Inimigo *)malloc(TOTAL_INIMIGOS * sizeof(Inimigo));
+    inicializarInimigos(inimigos, TOTAL_INIMIGOS);
 
     while (!WindowShouldClose()) {
 
         float vel = 250.0f * GetFrameTime();
-        if (IsKeyDown(KEY_RIGHT)) jogador.pos.x += vel;
-        if (IsKeyDown(KEY_LEFT))  jogador.pos.x -= vel;
-        if (IsKeyDown(KEY_UP))    jogador.pos.y -= vel;
-        if (IsKeyDown(KEY_DOWN))  jogador.pos.y += vel;
+        if (IsKeyDown(KEY_RIGHT)) jogador.x += vel;
+        if (IsKeyDown(KEY_LEFT))  jogador.x -= vel;
+        if (IsKeyDown(KEY_UP))    jogador.y -= vel;
+        if (IsKeyDown(KEY_DOWN))  jogador.y += vel;
+        if (IsKeyPressed(KEY_C)) {
+            curarTodos(inimigos, TOTAL_INIMIGOS, GetRandomValue(10, 30)); 
+        }
 
-        for (int i = 0; i < TOTAL_ITENS; i++) {
-            Item *it = (itens + i);
-            if (!it->coletado && colidiu(jogador.pos, jogador.raio, it->pos, it->raio)) {
-                aplicarItem(&jogador, it); // &jogador: ponteiro para struct
-            }
+        if (IsKeyPressed(KEY_SPACE)) {
+            // ponteiro para o inimigo vivo mais próximo (ou NULL)
+            // Inimigo *alvo = encontrarInimigoMaisProximo(inimigos, TOTAL_INIMIGOS, jogador);
+            Inimigo *alvo = encontrarInimigoMaisFraco(inimigos, TOTAL_INIMIGOS);
+            atingirInimigo(alvo, DANO_TIRO);
         }
 
         gerenciarBolas(&bolas, &quantidadeBolas);
@@ -199,20 +213,19 @@ int main(void) {
         BeginDrawing();
             ClearBackground(RAYWHITE);
 
-            for (int i = 0; i < TOTAL_ITENS; i++) {
-                desenharItem(itens + i);
+            for (int i = 0; i < TOTAL_INIMIGOS; i++) {
+                desenharInimigo(inimigos + i);
             }
 
-            DrawCircleV(jogador.pos, jogador.raio, BLUE);
+            DrawCircleV(jogador, RAIO_JOGADOR, BLUE);
 
-            DrawText(TextFormat("Vida: %d   Dano: %.1f   Armadura: %d", jogador.vida, jogador.dano, jogador.armadura), 10, 10, 22, DARKGRAY);
-            DrawText("Vermelho = arma (aumenta dano) | Verde = pocao (cura) | Roxo = absorve dano (armadura)", 10, 34, 18, GRAY);
+            DrawText("ESPACO atira no inimigo vivo mais proximo", 10, 10, 20, DARKGRAY);
             DrawText("Setas movem o jogador | ESC sai", 10, ALTURA_JANELA - 25, 16, GRAY);
 
         EndDrawing();
     }
 
-    free(itens); // libera o vetor dinâmico
+    free(inimigos); // libera o vetor de struct
 
     CloseWindow();
     return 0;

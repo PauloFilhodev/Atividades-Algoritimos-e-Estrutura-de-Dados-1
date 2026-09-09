@@ -1,118 +1,143 @@
 /*
- * Ponteiros + Alocação Dinâmica (vetor e matriz) com raylib
+ * Ponteiros para Struct + Vetor de Struct com raylib
  * ---------------------------------------------------------------
- * Este programa desenha:
- *   1) Uma matriz dinâmica (grade de células coloridas) alocada com malloc,
- *      onde cada linha é um ponteiro para um vetor de inteiros.
- *   2) Um um vetor dinâmico de bolinhas (struct Bola) que se movem na tela,
- *      manipuladas via ponteiros.
+ * Evolução da atividade3: agora o foco é em como PONTEIROS PARA
+ * STRUCT permitem localizar e alterar um elemento específico dentro
+ * de um vetor de struct, sem copiar a struct inteira.
+ *
+ * O vetor de inimigos é um VETOR DE STRUCT (bloco contíguo, alocado
+ * uma única vez com malloc). As funções recebem e retornam
+ * "Inimigo *" (ponteiro para struct) para localizar e modificar um
+ * elemento específico desse vetor.
  *
  * Conceitos praticados:
- *   - malloc / free
- *   - ponteiro para ponteiro (int **) para representar matriz
- *   - vetor de structs alocado dinamicamente
- *   - passagem de ponteiros para funções (evita cópias, permite alterar
- *     o dado original)
- *   - aritmética de ponteiros ( *(p + i) é equivalente a p[i] )
+ *   - vetor de struct (bloco contíguo de memória)
+ *   - ponteiro para struct como retorno de função (localizar um
+ *     elemento dentro do vetor e devolver o endereço dele)
+ *   - ponteiro para struct como parâmetro de função (alterar o
+ *     elemento apontado diretamente, sem cópia)
+ *   - enum para representar o estado de cada inimigo
+ *   - malloc / free do vetor
  *
  * Compilar (Linux, com raylib instalada):
- *   gcc exemplo_ponteiros_raylib.c -o exemplo -lraylib -lm -lpthread -ldl -lrt -lX11
- *
- * Compilar (Windows, MinGW):
- *   gcc exemplo_ponteiros_raylib.c -o exemplo.exe -lraylib -lgdi32 -lwinmm
+ *   gcc atividade4.c -o atividade4 -lraylib -lm -lpthread -ldl -lrt -lX11
  */
 
 #include "raylib.h"
-#include <stdlib.h>
+#include <stdlib.h> 
 #include <time.h>
+#include <math.h>
 
 #define LARGURA_JANELA 800
 #define ALTURA_JANELA  600
-#define TAM_CELULA     40   // tamanho de cada célula da grade (matriz)
+#define RAIO_JOGADOR   20.0f
+#define TOTAL_INIMIGOS 8
+#define DANO_TIRO      20
+#define MAX_VIDA 60
 
+typedef enum {
+    INIMIGO_VIVO,
+    INIMIGO_MORTO
+} EstadoInimigo;
 
 typedef struct {
-    Vector2 pos;
-    Vector2 vel;
-    float   raio;
-    Color   cor;
-} Bola;
+    Vector2       pos;
+    float         raio;
+    int           vida;
+    EstadoInimigo estado;
+} Inimigo;
 
-/* ---------------------------------------------------------------
- * cria uma MATRIZ dinâmica de inteiros (linhas x colunas)
- * Retorna um ponteiro para ponteiro (int **): cada posição do
- * vetor externo aponta para um vetor de inteiros (uma linha).
- * --------------------------------------------------------------- */
-int **criarMatriz(int linhas, int colunas) {
+/* preenche o vetor de struct (recebido por ponteiro) com valores iniciais */
+void inicializarInimigos(Inimigo *vetor, int n) {
+    for (int i = 0; i < n; i++) {
+        Inimigo *ini = (vetor + i); // ponteiro para o i-ésimo elemento
+        ini->pos    = (Vector2){ GetRandomValue(30, LARGURA_JANELA - 30),
+                                  GetRandomValue(30, ALTURA_JANELA - 30) };
+        ini->raio   = 15.0f;
+        ini->vida   = GetRandomValue(20, MAX_VIDA);
+        ini->estado = INIMIGO_VIVO;
+    }
+}
 
-    // aloca o vetor de ponteiros (um ponteiro por linha)
-    int **matriz = (int **)malloc(linhas * sizeof(int *));
-    if (matriz == NULL) return NULL;
+/* recebe um ponteiro para UM inimigo específico do vetor e altera
+ * a vida/estado diretamente na memória original (sem cópia) */
+void atingirInimigo(Inimigo *inimigo, int dano) {
+    if (inimigo == NULL || inimigo->estado == INIMIGO_MORTO) return;
 
-    for (int i = 0; i < linhas; i++) {
-        // aloca cada linha como um vetor de inteiros
-        matriz[i] = (int *)malloc(colunas * sizeof(int));
-        for (int j = 0; j < colunas; j++) {
-            // preenche com 0 ou 1 aleatoriamente (dois "tipos" de célula)
-            matriz[i][j] = GetRandomValue(0, 1);
+    inimigo->vida -= dano;
+    if (inimigo->vida <= 0) {
+        inimigo->vida = 0;
+        inimigo->estado = INIMIGO_MORTO;
+    }
+}
+
+/* percorre o vetor de struct e RETORNA UM PONTEIRO para o inimigo
+ * vivo mais próximo da posição informada (ou NULL se não houver) */
+Inimigo *encontrarInimigoMaisProximo(Inimigo *vetor, int n, Vector2 posJogador) {
+    Inimigo *maisProximo = NULL;
+    float menorDistancia = 0.0f;
+
+    for (int i = 0; i < n; i++) {
+        Inimigo *ini = (vetor + i);
+        if (ini->estado == INIMIGO_MORTO) continue;
+
+        float dx = ini->pos.x - posJogador.x;
+        float dy = ini->pos.y - posJogador.y;
+        float distancia = sqrtf(dx * dx + dy * dy);
+
+        if (maisProximo == NULL || distancia < menorDistancia) {
+            maisProximo = ini;
+            menorDistancia = distancia;
         }
     }
-    return matriz;
+    return maisProximo;
 }
 
-/* libera a memória da matriz: primeiro cada linha, depois o vetor de linhas */
-void liberarMatriz(int **matriz, int linhas) {
-    for (int i = 0; i < linhas; i++) {
-        free(matriz[i]);   // libera cada linha
-    }
-    free(matriz);           // libera o vetor de ponteiros
-}
+void curarTodos(Inimigo *vetor, int n, int cura)
+{
+    for (int i = 0; i < n; i++)
+    {
+        Inimigo *atual = (vetor + i);
 
-/* desenha a matriz na tela, célula por célula */
-void desenharMatriz(int **matriz, int linhas, int colunas) {
-    for (int i = 0; i < linhas; i++) {
-        for (int j = 0; j < colunas; j++) {
-            Color cor = (matriz[i][j] == 1) ? (Color){20, 40, 70, 255}
-                                             : (Color){15, 30, 55, 255};
-            DrawRectangle(j * TAM_CELULA, i * TAM_CELULA,
-                           TAM_CELULA - 2, TAM_CELULA - 2, cor);
+        if (atual->estado != INIMIGO_MORTO)
+        {
+            atual->vida += cura;
         }
     }
 }
 
-/* ---------------------------------------------------------------
- * cria o vetor dinâmico de bolas
- * --------------------------------------------------------------- */
-Bola *criarBolas(int quantidade) {
-    Bola *bolas = (Bola *)malloc(quantidade * sizeof(Bola));
-    if (bolas == NULL) return NULL;
-
-    for (int i = 0; i < quantidade; i++) {
-        // usar (bolas + i) é o mesmo que &bolas[i]: aqui acessamos
-        // o campo via ponteiro para deixar explícito o conceito.
-        Bola *b = (bolas + i);
-        b->pos = (Vector2){ GetRandomValue(50, LARGURA_JANELA - 50),
-                             GetRandomValue(50, ALTURA_JANELA - 50) };
-        b->vel = (Vector2){ (float)GetRandomValue(-4, 4),
-                             (float)GetRandomValue(-4, 4) };
-        b->raio = (float)GetRandomValue(10, 25);
-        b->cor  = (Color){ GetRandomValue(100,255), GetRandomValue(100,255),
-                            GetRandomValue(100,255), 255 };
+Inimigo *encontrarInimigoMaisFraco(Inimigo *vetor_inimigos, int max_inimigos)
+{
+    int menor_vida = vetor_inimigos->vida;
+    Inimigo *i_mais_fraco;
+    for (int i = 0; i < max_inimigos; i++)
+    {
+        Inimigo *i_atual = (vetor_inimigos + i);
+        if (i_atual->estado == INIMIGO_MORTO) {
+            continue;
+        }
+        
+        if (i_atual->vida < menor_vida)
+        {
+            i_mais_fraco = i_atual;
+            menor_vida = i_mais_fraco->vida;
+        } else if (i_atual->vida == menor_vida)
+        {
+            continue;
+        }
     }
-    return bolas;
+
+    if (!i_mais_fraco) return NULL;
+    return i_mais_fraco;
 }
 
-/* atualiza a posição de UMA bola: recebe um PONTEIRO para a struct,
- * então as alterações afetam diretamente o vetor original (sem cópia) */
-void atualizarBola(Bola *b) {
-    b->pos.x += b->vel.x;
-    b->pos.y += b->vel.y;
-
-    // rebate nas bordas
-    if (b->pos.x - b->raio < 0 || b->pos.x + b->raio > LARGURA_JANELA)
-        b->vel.x *= -1;
-    if (b->pos.y - b->raio < 0 || b->pos.y + b->raio > ALTURA_JANELA)
-        b->vel.y *= -1;
+void desenharInimigo(Inimigo *ini) {
+    if (ini->estado == INIMIGO_MORTO) return;
+    if (ini->vida > MAX_VIDA) ini->vida = MAX_VIDA;
+    Color cor = (ini->vida > 30) ? MAROON : ORANGE;
+    
+    DrawCircleV(ini->pos, ini->raio, cor);
+    DrawText(TextFormat("%d", ini->vida), ini->pos.x - 8, ini->pos.y - 26, 14, BLACK);
 }
 
 void gerenciarBolas(Bola **bolas, int *quantidadeBolas)
@@ -156,23 +181,31 @@ void gerenciarBolas(Bola **bolas, int *quantidadeBolas)
 int main(void) {
     srand((unsigned int)time(NULL));
 
-    InitWindow(LARGURA_JANELA, ALTURA_JANELA,
-               "Ponteiros e Alocacao Dinamica - raylib");
+    InitWindow(LARGURA_JANELA, ALTURA_JANELA, "Atividade 4 - Ponteiros para Struct + Vetor de Struct");
     SetTargetFPS(60);
 
-    int linhas   = ALTURA_JANELA / TAM_CELULA;
-    int colunas  = LARGURA_JANELA / TAM_CELULA;
-    int **grade  = criarMatriz(linhas, colunas);   // matriz dinâmica
+    Vector2 jogador = { LARGURA_JANELA / 2.0f, ALTURA_JANELA / 2.0f };
 
-    int quantidadeBolas = 12;
-    Bola *bolas = criarBolas(quantidadeBolas);      // vetor dinâmico
+    // vetor de struct: um único bloco contíguo de memória com TOTAL_INIMIGOS structs
+    Inimigo *inimigos = (Inimigo *)malloc(TOTAL_INIMIGOS * sizeof(Inimigo));
+    inicializarInimigos(inimigos, TOTAL_INIMIGOS);
 
     while (!WindowShouldClose()) {
 
-        // percorre o vetor usando aritmética de ponteiros:
-        // (bolas + i) aponta para o i-ésimo elemento do vetor
-        for (int i = 0; i < quantidadeBolas; i++) {
-            atualizarBola(bolas + i);
+        float vel = 250.0f * GetFrameTime();
+        if (IsKeyDown(KEY_RIGHT)) jogador.x += vel;
+        if (IsKeyDown(KEY_LEFT))  jogador.x -= vel;
+        if (IsKeyDown(KEY_UP))    jogador.y -= vel;
+        if (IsKeyDown(KEY_DOWN))  jogador.y += vel;
+        if (IsKeyPressed(KEY_C)) {
+            curarTodos(inimigos, TOTAL_INIMIGOS, GetRandomValue(10, 30)); 
+        }
+
+        if (IsKeyPressed(KEY_SPACE)) {
+            // ponteiro para o inimigo vivo mais próximo (ou NULL)
+            // Inimigo *alvo = encontrarInimigoMaisProximo(inimigos, TOTAL_INIMIGOS, jogador);
+            Inimigo *alvo = encontrarInimigoMaisFraco(inimigos, TOTAL_INIMIGOS);
+            atingirInimigo(alvo, DANO_TIRO);
         }
 
         gerenciarBolas(&bolas, &quantidadeBolas);
@@ -180,22 +213,19 @@ int main(void) {
         BeginDrawing();
             ClearBackground(RAYWHITE);
 
-            desenharMatriz(grade, linhas, colunas);
-
-            for (int i = 0; i < quantidadeBolas; i++) {
-                DrawCircleV(bolas[i].pos, bolas[i].raio, bolas[i].cor);
+            for (int i = 0; i < TOTAL_INIMIGOS; i++) {
+                desenharInimigo(inimigos + i);
             }
 
-            DrawText("Matriz (int**) e vetor de structs (Bola*) alocados com malloc",
-                     10, 10, 18, WHITE);
-            DrawText("Pressione ESC para sair", 10, ALTURA_JANELA - 25, 16, WHITE);
+            DrawCircleV(jogador, RAIO_JOGADOR, BLUE);
+
+            DrawText("ESPACO atira no inimigo vivo mais proximo", 10, 10, 20, DARKGRAY);
+            DrawText("Setas movem o jogador | ESC sai", 10, ALTURA_JANELA - 25, 16, GRAY);
 
         EndDrawing();
     }
 
-    // libera TODA a memória alocada dinamicamente antes de encerrar
-    free(bolas);
-    liberarMatriz(grade, linhas);
+    free(inimigos); // libera o vetor de struct
 
     CloseWindow();
     return 0;

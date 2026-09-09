@@ -108,8 +108,8 @@ void curarTodos(Inimigo *vetor, int n, int cura)
 
 Inimigo *encontrarInimigoMaisFraco(Inimigo *vetor_inimigos, int max_inimigos)
 {
-    int menor_vida = vetor_inimigos->vida;
     Inimigo *i_mais_fraco;
+    int menor_vida = vetor_inimigos->vida;
     for (int i = 0; i < max_inimigos; i++)
     {
         Inimigo *i_atual = (vetor_inimigos + i);
@@ -140,44 +140,6 @@ void desenharInimigo(Inimigo *ini) {
     DrawText(TextFormat("%d", ini->vida), ini->pos.x - 8, ini->pos.y - 26, 14, BLACK);
 }
 
-void gerenciarBolas(Bola **bolas, int *quantidadeBolas)
-{
-    if (IsKeyPressed(KEY_SPACE)) // cria a bola nova
-    {
-        (*quantidadeBolas)++;
-
-        Bola *temp = realloc(*bolas, (*quantidadeBolas) * sizeof(Bola));
-        if (temp != NULL)
-        {
-            *bolas = temp;
-
-            Bola *newB = &((*bolas)[*quantidadeBolas - 1]);
-            newB->pos = (Vector2){ GetRandomValue(50, LARGURA_JANELA - 50),
-                                    GetRandomValue(50, ALTURA_JANELA - 50)};
-            newB->vel = (Vector2){ (float)GetRandomValue(-4, 4),
-                                    (float)GetRandomValue(-4, 4)};
-            newB->raio = (float)GetRandomValue(10, 25);
-            newB->cor  = (Color){ GetRandomValue(100,255), GetRandomValue(100,255),
-                            GetRandomValue(100,255), 255 };
-        }
-    } else if (IsKeyPressed(KEY_BACKSPACE)) // deleta a ultima bola
-    {
-        if ((*quantidadeBolas) > 0)
-        {
-            (*quantidadeBolas)--;
-
-            if (*quantidadeBolas > 0)
-            {
-                Bola *temp = realloc(*bolas, (*quantidadeBolas) * sizeof(Bola));
-                if (temp != NULL) *bolas = temp;
-            } else {
-                free(*bolas);
-                *bolas = NULL;
-            }
-        } 
-    }
-}
-
 int main(void) {
     srand((unsigned int)time(NULL));
 
@@ -203,18 +165,22 @@ int main(void) {
 
         if (IsKeyPressed(KEY_SPACE)) {
             // ponteiro para o inimigo vivo mais próximo (ou NULL)
-            // Inimigo *alvo = encontrarInimigoMaisProximo(inimigos, TOTAL_INIMIGOS, jogador);
+            DrawText("Mais fraco", 10, 40, 20, DARKGRAY);
             Inimigo *alvo = encontrarInimigoMaisFraco(inimigos, TOTAL_INIMIGOS);
             atingirInimigo(alvo, DANO_TIRO);
         }
-
-        gerenciarBolas(&bolas, &quantidadeBolas);
+        
+        if (IsKeyDown(KEY_SPACE) && IsKeyPressed(KEY_B))
+        {
+            Inimigo *alvo = encontrarInimigoMaisProximo(inimigos, TOTAL_INIMIGOS, jogador);
+            atingirInimigo(alvo, DANO_TIRO);
+        }
 
         BeginDrawing();
             ClearBackground(RAYWHITE);
 
             for (int i = 0; i < TOTAL_INIMIGOS; i++) {
-                desenharInimigo(inimigos + i);
+                desenharInimigo(inimigos + i); 
             }
 
             DrawCircleV(jogador, RAIO_JOGADOR, BLUE);

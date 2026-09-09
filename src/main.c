@@ -108,8 +108,8 @@ void curarTodos(Inimigo *vetor, int n, int cura)
 
 Inimigo *encontrarInimigoMaisFraco(Inimigo *vetor_inimigos, int max_inimigos)
 {
-    int menor_vida = vetor_inimigos->vida;
     Inimigo *i_mais_fraco;
+    int menor_vida = vetor_inimigos->vida;
     int contadorInimigos = 0;
     for (int i = 0; i < max_inimigos; i++)
     {
@@ -170,12 +170,18 @@ int main(void) {
             Inimigo *alvo = encontrarInimigoMaisFraco(inimigos, TOTAL_INIMIGOS); // ponteiro para o inimigo vivo mais fraco ou aleatório
             atingirInimigo(alvo, DANO_TIRO);
         }
+        
+        if (IsKeyDown(KEY_SPACE) && IsKeyPressed(KEY_B))
+        {
+            Inimigo *alvo = encontrarInimigoMaisProximo(inimigos, TOTAL_INIMIGOS, jogador);
+            atingirInimigo(alvo, DANO_TIRO);
+        }
 
         BeginDrawing();
             ClearBackground(RAYWHITE);
 
             for (int i = 0; i < TOTAL_INIMIGOS; i++) {
-                desenharInimigo(inimigos + i);
+                desenharInimigo(inimigos + i); 
             }
 
             DrawCircleV(jogador, RAIO_JOGADOR, BLUE);

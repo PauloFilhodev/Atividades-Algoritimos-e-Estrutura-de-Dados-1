@@ -110,6 +110,7 @@ Inimigo *encontrarInimigoMaisFraco(Inimigo *vetor_inimigos, int max_inimigos)
 {
     int menor_vida = vetor_inimigos->vida;
     Inimigo *i_mais_fraco;
+    int contadorInimigos = 0;
     for (int i = 0; i < max_inimigos; i++)
     {
         Inimigo *i_atual = (vetor_inimigos + i);
@@ -117,17 +118,17 @@ Inimigo *encontrarInimigoMaisFraco(Inimigo *vetor_inimigos, int max_inimigos)
             continue;
         }
         
-        if (i_atual->vida < menor_vida)
+        contadorInimigos++;
+        if (i_atual->vida <= menor_vida)
         {
             i_mais_fraco = i_atual;
             menor_vida = i_mais_fraco->vida;
-        } else if (i_atual->vida == menor_vida)
-        {
-            continue;
         }
     }
 
-    if (!i_mais_fraco) return NULL;
+    if (!i_mais_fraco) {
+        return &i_mais_fraco[GetRandomValue(0, contadorInimigos)];
+    }
     return i_mais_fraco;
 }
 
@@ -155,10 +156,10 @@ int main(void) {
     while (!WindowShouldClose()) {
 
         float vel = 250.0f * GetFrameTime();
-        if (IsKeyDown(KEY_RIGHT)) jogador.x += vel;
-        if (IsKeyDown(KEY_LEFT))  jogador.x -= vel;
-        if (IsKeyDown(KEY_UP))    jogador.y -= vel;
-        if (IsKeyDown(KEY_DOWN))  jogador.y += vel;
+        if (IsKeyDown(KEY_D)) jogador.x += vel;
+        if (IsKeyDown(KEY_A))  jogador.x -= vel;
+        if (IsKeyDown(KEY_W))    jogador.y -= vel;
+        if (IsKeyDown(KEY_S))  jogador.y += vel;
         if (IsKeyPressed(KEY_C)) {
             curarTodos(inimigos, TOTAL_INIMIGOS, GetRandomValue(10, 30)); 
         }
@@ -166,7 +167,7 @@ int main(void) {
         if (IsKeyPressed(KEY_SPACE)) {
             // ponteiro para o inimigo vivo mais próximo (ou NULL)
             // Inimigo *alvo = encontrarInimigoMaisProximo(inimigos, TOTAL_INIMIGOS, jogador);
-            Inimigo *alvo = encontrarInimigoMaisFraco(inimigos, TOTAL_INIMIGOS);
+            Inimigo *alvo = encontrarInimigoMaisFraco(inimigos, TOTAL_INIMIGOS); // ponteiro para o inimigo vivo mais fraco ou aleatório
             atingirInimigo(alvo, DANO_TIRO);
         }
 

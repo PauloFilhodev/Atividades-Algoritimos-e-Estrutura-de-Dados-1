@@ -1,231 +1,247 @@
 /*
- * Ponteiros para Struct + Vetor de Struct com raylib
+ * Vetor de Ponteiros para Struct com raylib
  * ---------------------------------------------------------------
- * Evolução da atividade3: agora o foco é em como PONTEIROS PARA
- * STRUCT permitem localizar e alterar um elemento específico dentro
- * de um vetor de struct, sem copiar a struct inteira.
+ * Atividade final: reúne todos os conceitos das atividades
+ * anteriores em um pequeno "sistema de entidades" (jogador,
+ * inimigos e itens).
  *
- * O vetor de inimigos é um VETOR DE STRUCT (bloco contíguo, alocado
- * uma única vez com malloc). As funções recebem e retornam
- * "Inimigo *" (ponteiro para struct) para localizar e modificar um
- * elemento específico desse vetor.
+ * A diferença central para a atividade4 é a forma como a coleção é
+ * guardada: em vez de um vetor de struct (bloco contíguo), aqui
+ * temos um VETOR DE PONTEIROS PARA STRUCT (Entidade *vetor[N]).
+ * Cada posição do vetor guarda apenas um ENDEREÇO; a struct em si
+ * fica em um bloco de memória alocado individualmente com malloc.
+ * Isso permite, por exemplo, remover uma entidade "no meio" do
+ * vetor apenas trocando ponteiros (rápido), sem precisar mover
+ * structs inteiras na memória.
  *
- * Conceitos praticados:
- *   - vetor de struct (bloco contíguo de memória)
- *   - ponteiro para struct como retorno de função (localizar um
- *     elemento dentro do vetor e devolver o endereço dele)
- *   - ponteiro para struct como parâmetro de função (alterar o
- *     elemento apontado diretamente, sem cópia)
- *   - enum para representar o estado de cada inimigo
- *   - malloc / free do vetor
+ * Conceitos praticados (revisão de todas as atividades):
+ *   - ponteiros e aritmética de ponteiros
+ *   - alocação dinâmica (malloc/free) de cada struct individual
+ *   - struct (Entidade) com campos variados
+ *   - enum (TipoEntidade) para diferenciar jogador/inimigo/item
+ *   - union (ExtraEntidade) para guardar, no mesmo espaço, o dano
+ *     de um inimigo OU o valor de um item, conforme o TipoEntidade
+ *   - ponteiro para struct (Entidade *) manipulado por funções
+ *   - vetor de ponteiros para struct (Entidade *vetor[N])
  *
  * Compilar (Linux, com raylib instalada):
- *   gcc atividade4.c -o atividade4 -lraylib -lm -lpthread -ldl -lrt -lX11
+ *   gcc atividade5.c -o atividade5 -lraylib -lm -lpthread -ldl -lrt -lX11
  */
 
 #include "raylib.h"
-#include <stdlib.h> 
+#include <stdlib.h>
 #include <time.h>
 #include <math.h>
 
-#define LARGURA_JANELA 800
-#define ALTURA_JANELA  600
-#define RAIO_JOGADOR   20.0f
-#define TOTAL_INIMIGOS 8
-#define DANO_TIRO      20
-#define MAX_VIDA 60
+#define LARGURA_JANELA  800
+#define ALTURA_JANELA   600
+#define RAIO_JOGADOR    20.0f
+#define MAX_ENTIDADES   30
+#define TOTAL_INIMIGOS  5
+#define TOTAL_ITENS     6
 
 typedef enum {
-    INIMIGO_VIVO,
-    INIMIGO_MORTO
-} EstadoInimigo;
+    ENTIDADE_JOGADOR,
+    ENTIDADE_INIMIGO,
+    ENTIDADE_ITEM
+} TipoEntidade;
+
+/* union: só um destes campos faz sentido por vez, dependendo do tipo */
+typedef union {
+    int dano;   // usado quando tipo == ENTIDADE_INIMIGO
+    int valor;  // usado quando tipo == ENTIDADE_ITEM
+} ExtraEntidade;
 
 typedef struct {
+    TipoEntidade  tipo;
     Vector2       pos;
     float         raio;
     int           vida;
-    EstadoInimigo estado;
-} Inimigo;
+    Color         cor;
+    ExtraEntidade extra;
+} Entidade;
 
-/* preenche o vetor de struct (recebido por ponteiro) com valores iniciais */
-void inicializarInimigos(Inimigo *vetor, int n) {
-    for (int i = 0; i < n; i++) {
-        Inimigo *ini = (vetor + i); // ponteiro para o i-ésimo elemento
-        ini->pos    = (Vector2){ GetRandomValue(30, LARGURA_JANELA - 30),
-                                  GetRandomValue(30, ALTURA_JANELA - 30) };
-        ini->raio   = 15.0f;
-        ini->vida   = GetRandomValue(20, MAX_VIDA);
-        ini->estado = INIMIGO_VIVO;
+// vetor de PONTEIROS para struct: cada posição aponta para um bloco
+// alocado individualmente com malloc (não é um bloco contíguo único)
+Entidade *vetorEntidades[MAX_ENTIDADES];
+int totalEntidades = 0;
+
+/* aloca UMA entidade individualmente e devolve o ponteiro para ela */
+Entidade *criarEntidade(TipoEntidade tipo, Vector2 pos) {
+    Entidade *e = (Entidade *)malloc(sizeof(Entidade));
+    if (e == NULL) return NULL;
+
+    e->tipo  = tipo;
+    e->pos   = pos;
+    e->raio  = (tipo == ENTIDADE_JOGADOR) ? RAIO_JOGADOR
+             : (tipo == ENTIDADE_INIMIGO) ? 15.0f : 8.0f;
+
+    switch (tipo) {
+        case ENTIDADE_JOGADOR:
+            e->vida = 100;
+            e->cor  = BLUE;
+            break;
+        case ENTIDADE_INIMIGO:
+            e->vida       = 40;
+            e->cor        = MAROON;
+            e->extra.dano = GetRandomValue(5, 15);
+            break;
+        case ENTIDADE_ITEM:
+            e->vida        = 1;
+            e->cor         = GOLD;
+            e->extra.valor = GetRandomValue(5, 20);
+            break;
+    }
+    return e;
+}
+
+/* adiciona um ponteiro de entidade no vetor de ponteiros */
+void adicionarEntidade(Entidade *e) {
+    if (e == NULL || totalEntidades >= MAX_ENTIDADES) return;
+    vetorEntidades[totalEntidades] = e;
+    totalEntidades++;
+}
+
+/* remove a entidade do índice informado: libera a memória dela e
+ * substitui a posição vaga pelo ÚLTIMO ponteiro do vetor. Como o
+ * vetor guarda apenas ponteiros, isso é apenas uma troca de
+ * endereços -- nenhuma struct precisa ser copiada ou movida. */
+void removerEntidade(int indice) {
+    if (indice < 0 || indice >= totalEntidades) return;
+
+    free(vetorEntidades[indice]);              // libera o bloco alocado
+    vetorEntidades[indice] = vetorEntidades[totalEntidades - 1];
+    totalEntidades--;
+}
+
+bool colidiu(Entidade *a, Entidade *b) {
+    float dx = a->pos.x - b->pos.x;
+    float dy = a->pos.y - b->pos.y;
+    float distancia = sqrtf(dx * dx + dy * dy);
+    return distancia <= (a->raio + b->raio);
+}
+
+void desenharEntidade(Entidade *e) {
+    DrawCircleV(e->pos, e->raio, e->cor);
+    if (*(vetorEntidades+ 1) == e) {
+        DrawCircleV(e->pos, e->raio, BLACK);
+    }
+    if (e->tipo == ENTIDADE_INIMIGO) {
+        DrawText(TextFormat("%d", e->vida), e->pos.x - 8, e->pos.y - 26, 14, BLACK);
     }
 }
 
-/* recebe um ponteiro para UM inimigo específico do vetor e altera
- * a vida/estado diretamente na memória original (sem cópia) */
-void atingirInimigo(Inimigo *inimigo, int dano) {
-    if (inimigo == NULL || inimigo->estado == INIMIGO_MORTO) return;
+void colocarMaisProximoPrimeiro(Entidade **vetor_entidades, Entidade *jogador)
+{
+    float menorDistancia = INFINITY;
+    Entidade *e_mais_proxima = NULL;
+    int indiceMaisProximo = -1;
 
-    inimigo->vida -= dano;
-    if (inimigo->vida <= 0) {
-        inimigo->vida = 0;
-        inimigo->estado = INIMIGO_MORTO;
-    }
-}
+    for (int i = 1; i < totalEntidades; i++)
+    {
+        Entidade *tmp = vetor_entidades[i];
+        if (tmp == NULL) continue;
+        if (tmp->tipo != ENTIDADE_INIMIGO) continue;
+        if (tmp->vida <= 0) continue;
 
-/* percorre o vetor de struct e RETORNA UM PONTEIRO para o inimigo
- * vivo mais próximo da posição informada (ou NULL se não houver) */
-Inimigo *encontrarInimigoMaisProximo(Inimigo *vetor, int n, Vector2 posJogador) {
-    Inimigo *maisProximo = NULL;
-    float menorDistancia = 0.0f;
+        float dx = jogador->pos.x - tmp->pos.x;
+        float dy = jogador->pos.y - tmp->pos.y;
+        float distancia = sqrt(dx * dx + dy * dy);
 
-    for (int i = 0; i < n; i++) {
-        Inimigo *ini = (vetor + i);
-        if (ini->estado == INIMIGO_MORTO) continue;
-
-        float dx = ini->pos.x - posJogador.x;
-        float dy = ini->pos.y - posJogador.y;
-        float distancia = sqrtf(dx * dx + dy * dy);
-
-        if (maisProximo == NULL || distancia < menorDistancia) {
-            maisProximo = ini;
+        if (distancia < menorDistancia)
+        {
+            e_mais_proxima = tmp;
             menorDistancia = distancia;
-        }
-    }
-    return maisProximo;
-}
-
-void curarTodos(Inimigo *vetor, int n, int cura)
-{
-    for (int i = 0; i < n; i++)
-    {
-        Inimigo *atual = (vetor + i);
-
-        if (atual->estado != INIMIGO_MORTO)
-        {
-            atual->vida += cura;
-        }
-    }
-}
-
-Inimigo *encontrarInimigoMaisFraco(Inimigo *vetor_inimigos, int max_inimigos)
-{
-    int menor_vida = vetor_inimigos->vida;
-    Inimigo *i_mais_fraco;
-    for (int i = 0; i < max_inimigos; i++)
-    {
-        Inimigo *i_atual = (vetor_inimigos + i);
-        if (i_atual->estado == INIMIGO_MORTO) {
-            continue;
-        }
-        
-        if (i_atual->vida < menor_vida)
-        {
-            i_mais_fraco = i_atual;
-            menor_vida = i_mais_fraco->vida;
-        } else if (i_atual->vida == menor_vida)
-        {
-            continue;
+            indiceMaisProximo = i;
         }
     }
 
-    if (!i_mais_fraco) return NULL;
-    return i_mais_fraco;
-}
-
-void desenharInimigo(Inimigo *ini) {
-    if (ini->estado == INIMIGO_MORTO) return;
-    if (ini->vida > MAX_VIDA) ini->vida = MAX_VIDA;
-    Color cor = (ini->vida > 30) ? MAROON : ORANGE;
-    
-    DrawCircleV(ini->pos, ini->raio, cor);
-    DrawText(TextFormat("%d", ini->vida), ini->pos.x - 8, ini->pos.y - 26, 14, BLACK);
-}
-
-void gerenciarBolas(Bola **bolas, int *quantidadeBolas)
-{
-    if (IsKeyPressed(KEY_SPACE)) // cria a bola nova
-    {
-        (*quantidadeBolas)++;
-
-        Bola *temp = realloc(*bolas, (*quantidadeBolas) * sizeof(Bola));
-        if (temp != NULL)
-        {
-            *bolas = temp;
-
-            Bola *newB = &((*bolas)[*quantidadeBolas - 1]);
-            newB->pos = (Vector2){ GetRandomValue(50, LARGURA_JANELA - 50),
-                                    GetRandomValue(50, ALTURA_JANELA - 50)};
-            newB->vel = (Vector2){ (float)GetRandomValue(-4, 4),
-                                    (float)GetRandomValue(-4, 4)};
-            newB->raio = (float)GetRandomValue(10, 25);
-            newB->cor  = (Color){ GetRandomValue(100,255), GetRandomValue(100,255),
-                            GetRandomValue(100,255), 255 };
-        }
-    } else if (IsKeyPressed(KEY_BACKSPACE)) // deleta a ultima bola
-    {
-        if ((*quantidadeBolas) > 0)
-        {
-            (*quantidadeBolas)--;
-
-            if (*quantidadeBolas > 0)
-            {
-                Bola *temp = realloc(*bolas, (*quantidadeBolas) * sizeof(Bola));
-                if (temp != NULL) *bolas = temp;
-            } else {
-                free(*bolas);
-                *bolas = NULL;
-            }
-        } 
-    }
+    if (e_mais_proxima == NULL) return;
+    Entidade *temp = vetor_entidades[1];
+    vetor_entidades[1] = e_mais_proxima;
+    vetor_entidades[indiceMaisProximo] = temp;
 }
 
 int main(void) {
     srand((unsigned int)time(NULL));
 
-    InitWindow(LARGURA_JANELA, ALTURA_JANELA, "Atividade 4 - Ponteiros para Struct + Vetor de Struct");
+    InitWindow(LARGURA_JANELA, ALTURA_JANELA, "Atividade 5 - Vetor de Ponteiros para Struct");
     SetTargetFPS(60);
 
-    Vector2 jogador = { LARGURA_JANELA / 2.0f, ALTURA_JANELA / 2.0f };
+    // índice 0 do vetor de ponteiros é sempre o jogador
+    Entidade *jogador = criarEntidade(ENTIDADE_JOGADOR,
+                                      (Vector2){ LARGURA_JANELA / 2.0f, ALTURA_JANELA / 2.0f });
+    adicionarEntidade(jogador);
 
-    // vetor de struct: um único bloco contíguo de memória com TOTAL_INIMIGOS structs
-    Inimigo *inimigos = (Inimigo *)malloc(TOTAL_INIMIGOS * sizeof(Inimigo));
-    inicializarInimigos(inimigos, TOTAL_INIMIGOS);
+    for (int i = 0; i < TOTAL_INIMIGOS; i++) {
+        Vector2 pos = { GetRandomValue(30, LARGURA_JANELA - 30), GetRandomValue(30, ALTURA_JANELA - 30) };
+        adicionarEntidade(criarEntidade(ENTIDADE_INIMIGO, pos));
+    }
+    for (int i = 0; i < TOTAL_ITENS; i++) {
+        Vector2 pos = { GetRandomValue(30, LARGURA_JANELA - 30), GetRandomValue(30, ALTURA_JANELA - 30) };
+        adicionarEntidade(criarEntidade(ENTIDADE_ITEM, pos));
+    }
+
+    int pontuacao = 0;
 
     while (!WindowShouldClose()) {
 
         float vel = 250.0f * GetFrameTime();
-        if (IsKeyDown(KEY_RIGHT)) jogador.x += vel;
-        if (IsKeyDown(KEY_LEFT))  jogador.x -= vel;
-        if (IsKeyDown(KEY_UP))    jogador.y -= vel;
-        if (IsKeyDown(KEY_DOWN))  jogador.y += vel;
-        if (IsKeyPressed(KEY_C)) {
-            curarTodos(inimigos, TOTAL_INIMIGOS, GetRandomValue(10, 30)); 
+        if (IsKeyDown(KEY_RIGHT)) jogador->pos.x += vel;
+        if (IsKeyDown(KEY_LEFT))  jogador->pos.x -= vel;
+        if (IsKeyDown(KEY_UP))    jogador->pos.y -= vel;
+        if (IsKeyDown(KEY_DOWN))  jogador->pos.y += vel;
+
+        colocarMaisProximoPrimeiro(vetorEntidades, jogador);
+
+        // percorre o vetor de ponteiros: cada vetorEntidades[i] já é um "Entidade *"
+        for (int i = 1; i < totalEntidades; i++) {
+            Entidade *e = vetorEntidades[i];
+            if (!colidiu(jogador, e)) continue;
+
+            if (e->tipo == ENTIDADE_ITEM) {
+                pontuacao += e->extra.valor;
+                removerEntidade(i);
+                i--; // a posição i agora tem outra entidade (a que veio do final)
+            } else if (e->tipo == ENTIDADE_INIMIGO) {
+                jogador->vida -= e->extra.dano;
+                if (jogador->vida < 0) jogador->vida = 0;
+            }
         }
 
         if (IsKeyPressed(KEY_SPACE)) {
-            // ponteiro para o inimigo vivo mais próximo (ou NULL)
-            // Inimigo *alvo = encontrarInimigoMaisProximo(inimigos, TOTAL_INIMIGOS, jogador);
-            Inimigo *alvo = encontrarInimigoMaisFraco(inimigos, TOTAL_INIMIGOS);
-            atingirInimigo(alvo, DANO_TIRO);
+            // atira no primeiro inimigo vivo encontrado no vetor de ponteiros
+            for (int i = 1; i < totalEntidades; i++) {
+                Entidade *e = vetorEntidades[i];
+                if (e->tipo != ENTIDADE_INIMIGO) continue;
+                if (!colidiu(jogador, e) && e->raio > 0) {
+                    e->vida -= 20;
+                    if (e->vida <= 0) {
+                        removerEntidade(i);
+                    }
+                    break;
+                }
+            }
         }
-
-        gerenciarBolas(&bolas, &quantidadeBolas);
 
         BeginDrawing();
             ClearBackground(RAYWHITE);
 
-            for (int i = 0; i < TOTAL_INIMIGOS; i++) {
-                desenharInimigo(inimigos + i);
+            for (int i = 0; i < totalEntidades; i++) {
+                desenharEntidade(vetorEntidades[i]);
             }
 
-            DrawCircleV(jogador, RAIO_JOGADOR, BLUE);
-
-            DrawText("ESPACO atira no inimigo vivo mais proximo", 10, 10, 20, DARKGRAY);
-            DrawText("Setas movem o jogador | ESC sai", 10, ALTURA_JANELA - 25, 16, GRAY);
+            DrawText(TextFormat("Vida: %d   Pontuacao: %d", jogador->vida, pontuacao), 10, 10, 22, DARKGRAY);
+            DrawText(TextFormat("Entidades ativas: %d", totalEntidades), 10, 34, 18, GRAY);
+            DrawText("Setas movem | ESPACO atira | ESC sai", 10, ALTURA_JANELA - 25, 16, GRAY);
 
         EndDrawing();
     }
 
-    free(inimigos); // libera o vetor de struct
+    // libera cada bloco alocado individualmente (cada ponteiro do vetor)
+    for (int i = 0; i < totalEntidades; i++) {
+        free(vetorEntidades[i]);
+    }
 
     CloseWindow();
     return 0;

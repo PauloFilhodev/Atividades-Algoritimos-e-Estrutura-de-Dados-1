@@ -199,7 +199,7 @@ int main(void) {
         if (IsKeyDown(KEY_LEFT))  jogador->pos.x -= vel;
         if (IsKeyDown(KEY_UP))    jogador->pos.y -= vel;
         if (IsKeyDown(KEY_DOWN))  jogador->pos.y += vel;
-        if (IsKeyPressed(KEY_N)) criarNovaEntidade(vetorEntidades);
+        if (IsKeyPressed(KEY_N)) criarNovaEntidade();
 
         colocarMaisProximoPrimeiro(vetorEntidades, jogador);
 

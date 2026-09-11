@@ -162,6 +162,14 @@ void colocarMaisProximoPrimeiro(Entidade **vetor_entidades, Entidade *jogador)
     vetor_entidades[indiceMaisProximo] = temp;
 }
 
+void criarNovaEntidade()
+{
+    if (totalEntidades >= MAX_ENTIDADES) return;
+    Entidade *e = criarEntidade(ENTIDADE_ITEM, (Vector2){GetRandomValue(30, LARGURA_JANELA - 30),
+                                                         GetRandomValue(30, ALTURA_JANELA -30)});
+    adicionarEntidade(e);
+}
+
 int main(void) {
     srand((unsigned int)time(NULL));
 
@@ -191,6 +199,7 @@ int main(void) {
         if (IsKeyDown(KEY_LEFT))  jogador->pos.x -= vel;
         if (IsKeyDown(KEY_UP))    jogador->pos.y -= vel;
         if (IsKeyDown(KEY_DOWN))  jogador->pos.y += vel;
+        if (IsKeyPressed(KEY_N)) criarNovaEntidade(vetorEntidades);
 
         colocarMaisProximoPrimeiro(vetorEntidades, jogador);
 

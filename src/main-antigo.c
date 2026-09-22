@@ -75,10 +75,11 @@ Moeda *criarMoedas(int quantidade) {
         m->pos      = (Vector2){ GetRandomValue(30, LARGURA_JANELA - 30),
                                   GetRandomValue(30, ALTURA_JANELA - 30) };
         m->raio     = 10.0f;
-        m->tipo     = (TipoMoeda)GetRandomValue(0, 9) == 0 ? MOEDA_DIAMANTE : (TipoMoeda)GetRandomValue(MOEDA_BRONZE, MOEDA_OURO);
+        // m->tipo     = (TipoMoeda)GetRandomValue(MOEDA_BRONZE, MOEDA_OURO);
+        m->tipo     = (TipoMoeda) GetRandomValue(0, 9) == 0 ? MOEDA_DIAMANTE : (TipoMoeda)GetRandomValue(MOEDA_BRONZE, MOEDA_OURO);
         m->valor    = valorDaMoeda(m->tipo);
         m->coletada = false;
-        m->tempoColetada = 0;
+        m->tempoColetada = 0; // moeda começa não coletada
     }
     return moedas;
 }
@@ -95,13 +96,18 @@ bool tentarColetar(Moeda *m, Vector2 posJogador, float raioJogador) {
     if (distancia <= somaRaios) {
         m->tempoColetada = GetTime();
         m->coletada = true;
+        m->pos = (Vector2){ GetRandomValue(30, LARGURA_JANELA - 30),
+                        GetRandomValue(30, ALTURA_JANELA - 30)};
         return true;
     }
     return false;
 }
 
 void desenharMoeda(Moeda *m) {
-    if (m->coletada && (GetTime() - m->tempoColetada) < 3.0f) return;
+    if (m->coletada == true && (GetTime() - m->tempoColetada) < 3.0f) return;
+    m->coletada = false;
+    m->tempoColetada = 0;
+    DrawText(TextFormat("+: %d", m->valor), m->pos.x - 5, m->pos.y-10, 20, BLACK);
     DrawCircleV(m->pos, m->raio, corDaMoeda(m->tipo));
 }
 
@@ -127,12 +133,6 @@ int main(void) {
         // percorre o vetor com aritmética de ponteiros: (moedas + i)
         for (int i = 0; i < TOTAL_MOEDAS; i++) {
             Moeda *m = (moedas + i);
-            if ((GetTime()- m->tempoColetada) >= 3.0f && m->coletada)
-            {
-                m->pos = (Vector2){GetRandomValue(50, LARGURA_JANELA - 50), GetRandomValue(50, ALTURA_JANELA - 50)};
-                m->coletada = false;
-                m->tempoColetada = 0;
-            }
             if (tentarColetar(m, jogador, RAIO_JOGADOR)) {
                 pontuacao += m->valor;
             }

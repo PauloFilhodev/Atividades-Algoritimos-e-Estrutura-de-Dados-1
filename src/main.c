@@ -1,257 +1,435 @@
-/*
- * Vetor de Ponteiros para Struct com raylib
- * ---------------------------------------------------------------
- * Atividade final: reúne todos os conceitos das atividades
- * anteriores em um pequeno "sistema de entidades" (jogador,
- * inimigos e itens).
- *
- * A diferença central para a atividade4 é a forma como a coleção é
- * guardada: em vez de um vetor de struct (bloco contíguo), aqui
- * temos um VETOR DE PONTEIROS PARA STRUCT (Entidade *vetor[N]).
- * Cada posição do vetor guarda apenas um ENDEREÇO; a struct em si
- * fica em um bloco de memória alocado individualmente com malloc.
- * Isso permite, por exemplo, remover uma entidade "no meio" do
- * vetor apenas trocando ponteiros (rápido), sem precisar mover
- * structs inteiras na memória.
- *
- * Conceitos praticados (revisão de todas as atividades):
- *   - ponteiros e aritmética de ponteiros
- *   - alocação dinâmica (malloc/free) de cada struct individual
- *   - struct (Entidade) com campos variados
- *   - enum (TipoEntidade) para diferenciar jogador/inimigo/item
- *   - union (ExtraEntidade) para guardar, no mesmo espaço, o dano
- *     de um inimigo OU o valor de um item, conforme o TipoEntidade
- *   - ponteiro para struct (Entidade *) manipulado por funções
- *   - vetor de ponteiros para struct (Entidade *vetor[N])
- *
- * Compilar (Linux, com raylib instalada):
- *   gcc atividade5.c -o atividade5 -lraylib -lm -lpthread -ldl -lrt -lX11
- */
-
 #include "raylib.h"
+#include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
 #include <math.h>
 
-#define LARGURA_JANELA  800
-#define ALTURA_JANELA   600
-#define RAIO_JOGADOR    20.0f
-#define MAX_ENTIDADES   30
-#define TOTAL_INIMIGOS  5
-#define TOTAL_ITENS     6
+#define LARGURA_JANELA 800
+#define ALTURA_JANELA 600
+#define RAIO_JOGADOR 20.0f
+#define MAX_ENTIDADES 30
+#define TOTAL_INIMIGOS 5
+#define TOTAL_ITENS 6
+#define ARQUIVO_PLACAR "placar.txt"
+#define ARQUIVO_SAVE "save.bin"
 
-typedef enum {
+typedef enum
+{
     ENTIDADE_JOGADOR,
     ENTIDADE_INIMIGO,
     ENTIDADE_ITEM
 } TipoEntidade;
 
-/* union: só um destes campos faz sentido por vez, dependendo do tipo */
-typedef union {
-    int dano;   // usado quando tipo == ENTIDADE_INIMIGO
-    int valor;  // usado quando tipo == ENTIDADE_ITEM
+typedef union
+{
+    int dano;
+    int valor;
 } ExtraEntidade;
 
-typedef struct {
-    TipoEntidade  tipo;
-    Vector2       pos;
-    float         raio;
-    int           vida;
-    Color         cor;
+typedef struct
+{
+    TipoEntidade tipo;
+    Vector2 pos;
+    float raio;
+    int vida;
+    Color cor;
     ExtraEntidade extra;
 } Entidade;
 
-// vetor de PONTEIROS para struct: cada posição aponta para um bloco
-// alocado individualmente com malloc (não é um bloco contíguo único)
 Entidade *vetorEntidades[MAX_ENTIDADES];
 int totalEntidades = 0;
 
-/* aloca UMA entidade individualmente e devolve o ponteiro para ela */
-Entidade *criarEntidade(TipoEntidade tipo, Vector2 pos) {
+Entidade *criarEntidade(TipoEntidade tipo, Vector2 pos)
+{
     Entidade *e = (Entidade *)malloc(sizeof(Entidade));
-    if (e == NULL) return NULL;
+    if (e == NULL)
+        return NULL;
 
-    e->tipo  = tipo;
-    e->pos   = pos;
-    e->raio  = (tipo == ENTIDADE_JOGADOR) ? RAIO_JOGADOR
-             : (tipo == ENTIDADE_INIMIGO) ? 15.0f : 8.0f;
+    e->tipo = tipo;
+    e->pos = pos;
 
-    switch (tipo) {
-        case ENTIDADE_JOGADOR:
-            e->vida = 100;
-            e->cor  = BLUE;
-            break;
-        case ENTIDADE_INIMIGO:
-            e->vida       = 40;
-            e->cor        = MAROON;
-            e->extra.dano = GetRandomValue(5, 15);
-            break;
-        case ENTIDADE_ITEM:
-            e->vida        = 1;
-            e->cor         = GOLD;
-            e->extra.valor = GetRandomValue(5, 20);
-            break;
+    e->raio = (tipo == ENTIDADE_JOGADOR)   ? RAIO_JOGADOR
+              : (tipo == ENTIDADE_INIMIGO) ? 15.0f
+                                           : 8.0f;
+
+    switch (tipo)
+    {
+    case ENTIDADE_JOGADOR:
+        e->vida = 100;
+        e->cor = BLUE;
+        break;
+
+    case ENTIDADE_INIMIGO:
+        e->vida = 40;
+        e->cor = MAROON;
+        e->extra.dano = GetRandomValue(5, 15);
+        break;
+
+    case ENTIDADE_ITEM:
+        e->vida = 1;
+        e->cor = GOLD;
+        e->extra.valor = GetRandomValue(5, 20);
+        break;
     }
+
     return e;
 }
 
-/* adiciona um ponteiro de entidade no vetor de ponteiros */
-void adicionarEntidade(Entidade *e) {
-    if (e == NULL || totalEntidades >= MAX_ENTIDADES) return;
+void adicionarEntidade(Entidade *e)
+{
+    if (e == NULL || totalEntidades >= MAX_ENTIDADES)
+        return;
+
     vetorEntidades[totalEntidades] = e;
     totalEntidades++;
 }
 
-/* remove a entidade do índice informado: libera a memória dela e
- * substitui a posição vaga pelo ÚLTIMO ponteiro do vetor. Como o
- * vetor guarda apenas ponteiros, isso é apenas uma troca de
- * endereços -- nenhuma struct precisa ser copiada ou movida. */
-void removerEntidade(int indice) {
-    if (indice < 0 || indice >= totalEntidades) return;
+void removerEntidade(int indice)
+{
+    if (indice < 0 || indice >= totalEntidades)
+        return;
 
-    free(vetorEntidades[indice]);              // libera o bloco alocado
+    free(vetorEntidades[indice]);
+
     vetorEntidades[indice] = vetorEntidades[totalEntidades - 1];
+
     totalEntidades--;
 }
 
-bool colidiu(Entidade *a, Entidade *b) {
+void liberarTodasEntidades(void)
+{
+    for (int i = 0; i < totalEntidades; i++)
+        free(vetorEntidades[i]);
+
+    totalEntidades = 0;
+}
+
+bool colidiu(Entidade *a, Entidade *b)
+{
     float dx = a->pos.x - b->pos.x;
     float dy = a->pos.y - b->pos.y;
+
     float distancia = sqrtf(dx * dx + dy * dy);
+
     return distancia <= (a->raio + b->raio);
 }
 
-void desenharEntidade(Entidade *e) {
+void desenharEntidade(Entidade *e)
+{
     DrawCircleV(e->pos, e->raio, e->cor);
-    if (*(vetorEntidades+ 1) == e) {
-        DrawCircleV(e->pos, e->raio, BLACK);
-    }
-    if (e->tipo == ENTIDADE_INIMIGO) {
-        DrawText(TextFormat("%d", e->vida), e->pos.x - 8, e->pos.y - 26, 14, BLACK);
-    }
-}
 
-void colocarMaisProximoPrimeiro(Entidade **vetor_entidades, Entidade *jogador)
-{
-    float menorDistancia = INFINITY;
-    Entidade *e_mais_proxima = NULL;
-    int indiceMaisProximo = -1;
-
-    for (int i = 1; i < totalEntidades; i++)
+    if (e->tipo == ENTIDADE_INIMIGO)
     {
-        Entidade *tmp = vetor_entidades[i];
-        if (tmp == NULL) continue;
-        if (tmp->tipo != ENTIDADE_INIMIGO) continue;
-        if (tmp->vida <= 0) continue;
+        DrawText(
+            TextFormat("%d", e->vida),
+            e->pos.x - 8,
+            e->pos.y - 26,
+            14,
+            BLACK);
+    }
+}
 
-        float dx = jogador->pos.x - tmp->pos.x;
-        float dy = jogador->pos.y - tmp->pos.y;
-        float distancia = sqrt(dx * dx + dy * dy);
+/* ---- arquivo de TEXTO: histórico de pontuação ---- */
 
-        if (distancia < menorDistancia)
-        {
-            e_mais_proxima = tmp;
-            menorDistancia = distancia;
-            indiceMaisProximo = i;
-        }
+void salvarPlacarTexto(const char *nomeJogador, int pontuacao)
+{
+    FILE *arquivo = fopen(ARQUIVO_PLACAR, "a");
+
+    if (arquivo == NULL)
+        return;
+
+    fprintf(arquivo, "%s %d\n", nomeJogador, pontuacao);
+
+    fclose(arquivo);
+}
+
+/* lê nome e pontuação e devolve a maior pontuação encontrada */
+
+int lerMelhorPontuacao(void)
+{
+    FILE *arquivo = fopen(ARQUIVO_PLACAR, "r");
+
+    if (arquivo == NULL)
+        return 0;
+
+    int melhor = 0;
+    int valor = 0;
+    char nomeLido[16];
+
+    while (fscanf(arquivo, "%15s %d", nomeLido, &valor) == 2)
+    {
+        if (valor > melhor)
+            melhor = valor;
     }
 
-    if (e_mais_proxima == NULL) return;
-    Entidade *temp = vetor_entidades[1];
-    vetor_entidades[1] = e_mais_proxima;
-    vetor_entidades[indiceMaisProximo] = temp;
+    fclose(arquivo);
+
+    return melhor;
 }
 
-void criarNovaEntidade()
+/* ---- arquivo BINÁRIO: estado completo do jogo ---- */
+
+bool salvarJogoBinario(void)
 {
-    if (totalEntidades >= MAX_ENTIDADES) return;
-    Entidade *e = criarEntidade(ENTIDADE_ITEM, (Vector2){GetRandomValue(30, LARGURA_JANELA - 30),
-                                                         GetRandomValue(30, ALTURA_JANELA -30)});
-    adicionarEntidade(e);
+    FILE *arquivo = fopen(ARQUIVO_SAVE, "wb");
+
+    if (arquivo == NULL)
+        return false;
+
+    fwrite(&totalEntidades, sizeof(int), 1, arquivo);
+
+    for (int i = 0; i < totalEntidades; i++)
+    {
+        fwrite(vetorEntidades[i], sizeof(Entidade), 1, arquivo);
+    }
+
+    fclose(arquivo);
+
+    return true;
 }
 
-int main(void) {
+bool carregarJogoBinario(void)
+{
+    FILE *arquivo = fopen(ARQUIVO_SAVE, "rb");
+
+    if (arquivo == NULL)
+        return false;
+
+    int totalSalvo = 0;
+
+    if (fread(&totalSalvo, sizeof(int), 1, arquivo) != 1)
+    {
+        fclose(arquivo);
+        return false;
+    }
+
+    liberarTodasEntidades();
+
+    for (int i = 0; i < totalSalvo; i++)
+    {
+        Entidade *e = (Entidade *)malloc(sizeof(Entidade));
+
+        if (fread(e, sizeof(Entidade), 1, arquivo) != 1)
+        {
+            free(e);
+            break;
+        }
+
+        adicionarEntidade(e);
+    }
+
+    fclose(arquivo);
+
+    return true;
+}
+
+int main(void)
+{
     srand((unsigned int)time(NULL));
 
-    InitWindow(LARGURA_JANELA, ALTURA_JANELA, "Atividade 5 - Vetor de Ponteiros para Struct");
+    InitWindow(
+        LARGURA_JANELA,
+        ALTURA_JANELA,
+        "Atividade 6 - Manipulacao de Arquivos");
+
     SetTargetFPS(60);
 
-    // índice 0 do vetor de ponteiros é sempre o jogador
-    Entidade *jogador = criarEntidade(ENTIDADE_JOGADOR,
-                                      (Vector2){ LARGURA_JANELA / 2.0f, ALTURA_JANELA / 2.0f });
+    /* nome do jogador */
+    char nomeJogador[16] = "Jogador";
+
+    Entidade *jogador = criarEntidade(
+        ENTIDADE_JOGADOR,
+        (Vector2){
+            LARGURA_JANELA / 2.0f,
+            ALTURA_JANELA / 2.0f});
+
     adicionarEntidade(jogador);
 
-    for (int i = 0; i < TOTAL_INIMIGOS; i++) {
-        Vector2 pos = { GetRandomValue(30, LARGURA_JANELA - 30), GetRandomValue(30, ALTURA_JANELA - 30) };
-        adicionarEntidade(criarEntidade(ENTIDADE_INIMIGO, pos));
+    for (int i = 0; i < TOTAL_INIMIGOS; i++)
+    {
+        Vector2 pos = {
+            GetRandomValue(30, LARGURA_JANELA - 30),
+            GetRandomValue(30, ALTURA_JANELA - 30)};
+
+        adicionarEntidade(
+            criarEntidade(ENTIDADE_INIMIGO, pos));
     }
-    for (int i = 0; i < TOTAL_ITENS; i++) {
-        Vector2 pos = { GetRandomValue(30, LARGURA_JANELA - 30), GetRandomValue(30, ALTURA_JANELA - 30) };
-        adicionarEntidade(criarEntidade(ENTIDADE_ITEM, pos));
+
+    for (int i = 0; i < TOTAL_ITENS; i++)
+    {
+        Vector2 pos = {
+            GetRandomValue(30, LARGURA_JANELA - 30),
+            GetRandomValue(30, ALTURA_JANELA - 30)};
+
+        adicionarEntidade(
+            criarEntidade(ENTIDADE_ITEM, pos));
     }
 
     int pontuacao = 0;
+    int melhorPontuacao = lerMelhorPontuacao();
 
-    while (!WindowShouldClose()) {
+    char mensagem[64] = "";
+    float tempoMensagem = 0.0f;
+
+    while (!WindowShouldClose())
+    {
 
         float vel = 250.0f * GetFrameTime();
-        if (IsKeyDown(KEY_RIGHT)) jogador->pos.x += vel;
-        if (IsKeyDown(KEY_LEFT))  jogador->pos.x -= vel;
-        if (IsKeyDown(KEY_UP))    jogador->pos.y -= vel;
-        if (IsKeyDown(KEY_DOWN))  jogador->pos.y += vel;
-        if (IsKeyPressed(KEY_N)) criarNovaEntidade();
 
-        colocarMaisProximoPrimeiro(vetorEntidades, jogador);
+        if (IsKeyDown(KEY_RIGHT))
+            jogador->pos.x += vel;
 
-        // percorre o vetor de ponteiros: cada vetorEntidades[i] já é um "Entidade *"
-        for (int i = 1; i < totalEntidades; i++) {
+        if (IsKeyDown(KEY_LEFT))
+            jogador->pos.x -= vel;
+
+        if (IsKeyDown(KEY_UP))
+            jogador->pos.y -= vel;
+
+        if (IsKeyDown(KEY_DOWN))
+            jogador->pos.y += vel;
+
+        for (int i = 1; i < totalEntidades; i++)
+        {
+
             Entidade *e = vetorEntidades[i];
-            if (!colidiu(jogador, e)) continue;
 
-            if (e->tipo == ENTIDADE_ITEM) {
+            if (!colidiu(jogador, e))
+                continue;
+
+            if (e->tipo == ENTIDADE_ITEM)
+            {
+
                 pontuacao += e->extra.valor;
+
                 removerEntidade(i);
-                i--; // a posição i agora tem outra entidade (a que veio do final)
-            } else if (e->tipo == ENTIDADE_INIMIGO) {
+
+                i--;
+            }
+            else if (e->tipo == ENTIDADE_INIMIGO)
+            {
+
                 jogador->vida -= e->extra.dano;
-                if (jogador->vida < 0) jogador->vida = 0;
+
+                if (jogador->vida < 0)
+                    jogador->vida = 0;
             }
         }
 
-        if (IsKeyPressed(KEY_SPACE)) {
-            // atira no primeiro inimigo vivo encontrado no vetor de ponteiros
-            for (int i = 1; i < totalEntidades; i++) {
-                Entidade *e = vetorEntidades[i];
-                if (e->tipo != ENTIDADE_INIMIGO) continue;
-                if (!colidiu(jogador, e) && e->raio > 0) {
-                    e->vida -= 20;
-                    if (e->vida <= 0) {
-                        removerEntidade(i);
-                    }
-                    break;
-                }
-            }
+        /* salva nome + pontuação */
+        if (IsKeyPressed(KEY_F5))
+        {
+
+            salvarPlacarTexto(nomeJogador, pontuacao);
+
+            if (pontuacao > melhorPontuacao)
+                melhorPontuacao = pontuacao;
+
+            TextCopy(
+                mensagem,
+                "Placar salvo em placar.txt!");
+
+            tempoMensagem = 2.0f;
         }
+
+        if (IsKeyPressed(KEY_F6))
+        {
+
+            bool ok = salvarJogoBinario();
+
+            TextCopy(
+                mensagem,
+                ok
+                    ? "Jogo salvo em save.bin!"
+                    : "Erro ao salvar save.bin!");
+
+            tempoMensagem = 2.0f;
+        }
+
+        if (IsKeyPressed(KEY_F9))
+        {
+
+            bool ok = carregarJogoBinario();
+
+            if (ok)
+                jogador = vetorEntidades[0];
+
+            TextCopy(
+                mensagem,
+                ok
+                    ? "Jogo carregado de save.bin!"
+                    : "Nenhum save.bin encontrado!");
+
+            tempoMensagem = 2.0f;
+        }
+
+        if (IsKeyPressed(KEY_DELETE))
+        {
+            if (remove(ARQUIVO_SAVE) == 0)
+            {
+                TextCopy(mensagem, "Save apagado com sucesso!");
+            }
+            else
+            {
+                TextCopy(mensagem, "Nenhum save encontrado.");
+            }
+
+            tempoMensagem = 2.0f;
+        }
+
+        if (tempoMensagem > 0.0f)
+            tempoMensagem -= GetFrameTime();
 
         BeginDrawing();
-            ClearBackground(RAYWHITE);
 
-            for (int i = 0; i < totalEntidades; i++) {
-                desenharEntidade(vetorEntidades[i]);
-            }
+        ClearBackground(RAYWHITE);
 
-            DrawText(TextFormat("Vida: %d   Pontuacao: %d", jogador->vida, pontuacao), 10, 10, 22, DARKGRAY);
-            DrawText(TextFormat("Entidades ativas: %d", totalEntidades), 10, 34, 18, GRAY);
-            DrawText("Setas movem | ESPACO atira | ESC sai", 10, ALTURA_JANELA - 25, 16, GRAY);
+        for (int i = 0; i < totalEntidades; i++)
+        {
+            desenharEntidade(vetorEntidades[i]);
+        }
+
+        DrawText(
+            TextFormat(
+                "Jogador: %s   Vida: %d   Pontuacao: %d   Recorde: %d",
+                nomeJogador,
+                jogador->vida,
+                pontuacao,
+                melhorPontuacao),
+            10,
+            10,
+            22,
+            DARKGRAY);
+
+        DrawText(
+            "F5 salva placar | F6 salva jogo | F9 carrega jogo | DELETE apaga save",
+            10,
+            34,
+            18,
+            GRAY);
+
+        DrawText(
+            "Setas movem o jogador | ESC sai",
+            10,
+            ALTURA_JANELA - 25,
+            16,
+            GRAY);
+
+        if (tempoMensagem > 0.0f)
+        {
+            DrawText(
+                mensagem,
+                10,
+                58,
+                20,
+                DARKGREEN);
+        }
 
         EndDrawing();
     }
 
-    // libera cada bloco alocado individualmente (cada ponteiro do vetor)
-    for (int i = 0; i < totalEntidades; i++) {
-        free(vetorEntidades[i]);
-    }
+    liberarTodasEntidades();
 
     CloseWindow();
+
     return 0;
 }

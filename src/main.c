@@ -48,7 +48,8 @@ Placar *criarPlacares(int quantidade) {
 }
 
 /* ---- ordenação: bubble sort contando comparações e trocas ---- */
-void ordenarBubbleSort(Placar *vetor, int n, long *comparacoes, long *trocas) {
+void ordenarBubbleSort(Placar *vetor, int n, long *comparacoes, long *trocas, double *tempoOperacao) {
+    double inicio = GetTime();
     *comparacoes = 0;
     *trocas = 0;
 
@@ -63,6 +64,8 @@ void ordenarBubbleSort(Placar *vetor, int n, long *comparacoes, long *trocas) {
             }
         }
     }
+    double final = GetTime();
+    *tempoOperacao = (final - inicio) * 1000.0;
 }
 
 /* ---- busca sequencial: O(n), funciona em qualquer ordem ---- */
@@ -146,14 +149,15 @@ int main(void) {
     int alvo = placares[GetRandomValue(0, TOTAL_PLACARES - 1)].pontuacao;
     int indiceEncontrado = -1;
     char resultado[96] = "Pressione Q para buscar (sequencial) ou W (binaria)";
+    double tempoOperacao = 0.0;
 
     while (!WindowShouldClose()) {
 
         if (IsKeyPressed(KEY_O)) { // Ordena com bubble sort, contando comparações e trocas
-            ordenarBubbleSort(placares, TOTAL_PLACARES, &comparacoes, &trocas);
+            ordenarBubbleSort(placares, TOTAL_PLACARES, &comparacoes, &trocas, &tempoOperacao);
             ordenado = true;
             indiceEncontrado = -1;
-            TextCopy(resultado, TextFormat("Bubble sort: %ld comparacoes, %ld trocas (O(n^2))", comparacoes, trocas));
+            TextCopy(resultado, TextFormat("Bubble sort: %ld comparacoes, %ld trocas (O(n^2)), Tempo decorrido: %lf", comparacoes, trocas, tempoOperacao));
         }
 
         if (IsKeyPressed(KEY_N)) { // Sorteia um novo alvo dentre os valores existentes
@@ -180,7 +184,7 @@ int main(void) {
             ordenarInsertionSort(placares, TOTAL_PLACARES, &comparacoes, &trocas);
             ordenado = true;
             indiceEncontrado = -1;
-            TextCopy(resultado, TextFormat("Insertion sort: %ld comparacoes, %ld trocas/deslocamentos %ld", comparacoes, trocas));
+            TextCopy(resultado, TextFormat("Insertion sort: comparacoes %ld, trocas/deslocamentos %ld", comparacoes, trocas));
         }
 
         BeginDrawing();

@@ -37,6 +37,7 @@ typedef struct {
 
 Entidade *entidadeCriar(TipoEntidade tipo, Vector2 pos);
 bool      entidadeColidiu(Entidade *a, Entidade *b);
+bool      entidadeEstaViva(Entidade *e);
 void      entidadeDesenhar(Entidade *e);
 void      entidadeAplicarDano(Entidade *e, int dano);
 

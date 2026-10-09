@@ -100,7 +100,7 @@ int main(void) {
                 if (e->tipo != ENTIDADE_INIMIGO) continue;
                 if (!entidadeColidiu(jogador, e)) {
                     entidadeAplicarDano(e, DANO_TIRO);
-                    if (e->vida <= 0) removerEntidade(i);
+                    if (!entidadeEstaViva(e)) removerEntidade(i);
                     break;
                 }
             }

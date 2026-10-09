@@ -49,6 +49,16 @@ bool entidadeColidiu(Entidade *a, Entidade *b) {
     return distancia <= (a->raio + b->raio);
 }
 
+bool entidadeEstaViva(Entidade *e)
+{
+    if (e->vida > 0)
+    {
+        return true;
+    } else {
+        return false;
+    }
+}
+
 void entidadeDesenhar(Entidade *e) {
     DrawCircleV(e->pos, e->raio, e->cor);
     if (e->tipo == ENTIDADE_INIMIGO) {

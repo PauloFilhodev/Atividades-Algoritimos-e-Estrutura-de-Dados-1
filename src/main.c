@@ -106,6 +106,7 @@ int main(void) {
 
             DrawText(TextFormat("Vida: %d   Pontuacao: %d", jogador->vida, pontuacao), 10, 10, 22, DARKGRAY);
             DrawText(TextFormat("Entidades no inventario: %d", inventarioTotal(inventario)), 10, 34, 18, GRAY);
+            DrawText(TextFormat("ITEMS RESTANTES: %d", inventarioContarPorTipo(inventario, ENTIDADE_ITEM)), 250, 34, 18, YELLOW);
             DrawText("Setas movem | ESPACO atira | ESC sai", 10, ALTURA_JANELA - 25, 16, GRAY);
 
             if (inventarioEstaCheio(inventario))

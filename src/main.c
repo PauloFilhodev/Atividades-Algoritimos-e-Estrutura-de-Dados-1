@@ -44,7 +44,7 @@ int main(void) {
     InitWindow(LARGURA_JANELA, ALTURA_JANELA, "Atividade 9 - TAD (Tipo Abstrato de Dados)");
     SetTargetFPS(60);
 
-    Inventario *inventario = inventarioCriar(MAX_ENTIDADES);
+    Inventario *inventario = inventarioCriar(10);
 
     // índice 0 do inventário é sempre o jogador
     Entidade *jogador = entidadeCriar(ENTIDADE_JOGADOR,
@@ -110,7 +110,7 @@ int main(void) {
 
             if (inventarioEstaCheio(inventario))
             {
-                DrawText("INVENTARIO ESTA CHEIO!", 10, ALTURA_JANELA - 15, 16, GRAY);
+                DrawText("INVENTARIO ESTA CHEIO!", 10, ALTURA_JANELA - 15, 16, RED);
             }
 
         EndDrawing();
